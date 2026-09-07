@@ -1,0 +1,32 @@
+# Schematics and graphical assets
+
+The supplied folder contains several figures that can be classified as framework schematics rather than numerical-result plots.
+
+## Primary framework schematics
+
+| File | Role |
+|---|---|
+| `K.png` | Integrated forward–inverse–optimization workflow for geometry-driven WAAM control. This is the **primary architecture schematic**. |
+| `K4.png` | Comparison between conventional open-loop deposition and the proposed geometry-driven two-layer WAAM refinement framework. |
+| `K2.png` | Two-layer WAAM deposition/refinement illustration showing the proposed geometry-driven workflow. |
+| `K5.png` | Two-layer WAAM deposition illustration with process/geometry comparison. |
+| `C.png` | Layer-2 / forward–inverse–optimization framework schematic. |
+| `B.png` | Two-layer WAAM workflow/validation schematic. |
+| `A.png` | Two-layer WAAM workflow variant. |
+
+## Result figures
+
+The remaining PNG files are primarily model-performance or optimization-result figures, including:
+
+- `A11.png`, `A12.png` — AISI 316 forward-model results;
+- `L1.png` — ER70S-6 forward-model results;
+- `C1.png`–`C5.png`, `CC2.png`–`CC4.png` — inverse-model parameter predictions;
+- `C6.png`, `C7.png`, `D1.png` — optimization convergence;
+- `C8.png` — optimized process parameters;
+- `AS1.png`–`AS4.png`, `E1.png`, `E2.png`, `G1.png`, `SL1.png` — additional forward-model/result plots.
+
+## Recommended repository presentation
+
+For a public repository, the primary README should display `K.png` as the conceptual overview, followed by `K4.png` as the experimental/two-layer validation schematic. Numerical performance plots should be grouped separately under `figures/results/`.
+
+The original PNG files are retained without modification so that the repository remains traceable to the manuscript source package.
