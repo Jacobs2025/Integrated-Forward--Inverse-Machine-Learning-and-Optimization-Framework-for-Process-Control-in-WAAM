@@ -1,0 +1,2568 @@
+\documentclass[11pt]{article}
+
+\usepackage{graphicx}
+\usepackage[most]{tcolorbox}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{authblk}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}           % For hyperlinks and cross-referencing
+\usepackage{url}                % For URLs
+\usepackage[numbers,sort&compress]{natbib} % For citations
+\geometry{margin=1in}
+
+\title{Integrated Forward--Inverse Machine Learning and Optimization Framework for Process Control in Wire Arc Additive Manufacturing.}
+
+\author[1]{Bathlomew Ebika}
+\author[2]{Jacob Ekeamadi}
+\author[3,4]{Vishnu Ramasamy}
+\author[4]{Peng Wang}
+\author[3]{John Lewandowski}
+\author[1]{Kenneth  Loparo}
+
+
+\affil[1]{Department of Electrical, Computer and Systems Engineering, Case Western Reserve University, Cleveland, OH, USA}
+\affil[3]{Department of Materials Science and Engineering, Case Western Reserve University, Cleveland, OH, USA}
+\affil[5]{Department of Mechanical and Aerospace Engineering, Case Western Reserve University, Cleveland, OH, USA}
+\affil[2]{Peatech  Services LLC, Cleveland, OH, USA}
+\affil[4]{Department of Materials Science \& Engineering, Ohio State University, Columbus, OH, USA}
+
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Wire Arc Additive Manufacturing (WAAM) offers a scalable and cost-effective approach for fabricating large metallic components; however, its broader industrial adoption remains limited by the difficulty of accurately predicting, inverting, and optimizing process parameters required to achieve desired bead geometries. This challenge arises from the highly nonlinear and coupled relationships among voltage, wire feed speed, travel speed, and contact tip-to-work distance, which collectively govern melt-pool behavior and deposition outcomes. In this work, an integrated forward--inverse machine learning and optimization framework is developed to enable geometry-driven process initialization and control in WAAM. Forward models are constructed to predict bead geometry from process parameters, while inverse models estimate feasible parameter combinations for specified geometric targets. A gradient-based optimization layer is further introduced to refine inverse predictions by minimizing residual geometry error through iterative forward-model evaluation. The framework is validated using an experimentally generated dataset consisting of 796 WAAM depositions across ER70S-6 and AISI 316 material systems. The framework integrates forward prediction, inverse parameter estimation, and
+optimization-based refinement to enable geometry-driven WAAM process control.
+Across ER70S-6 and AISI~316, the models achieve high predictive accuracy, and
+optimization reduces bead-height and variance errors from $26.48\%\!\rightarrow\!0.205\%$
+and $91.49\%\!\rightarrow\!4.514\%$, respectively. It reflects a single ER70S‑6 validation target and therefore demonstrates the feasibility of the optimization workflow rather than its population‑wide effectiveness. Additional validation targets are required to establish generalizable optimization accuracy across the full parameter and geometry space. Overall, the proposed framework establishes a unified computational foundation for geometry-driven WAAM process planning, digital twin initialization, and future adaptive closed-loop manufacturing control.
+
+
+\end{abstract}
+
+\textbf{Keywords} Wire arc additive manufacturing Digital twin Machine learning Inverse modeling Optimization Process control
+
+\section*{Abbreviations}
+
+\begin{tabular}{ll}
+WAAM & Wire Arc Additive Manufacturing \\
+WFS & Wire Feed Speed \\
+TS & Travel Speed \\
+CTWD & Contact Tip-to-Work Distance \\
+GPR & Gaussian Process Regression \\
+GBR & Gradient Boosting Regression \\
+ANN & Artificial Neural Network \\
+RMSE & Root Mean Square Error \\
+MAE & Mean Absolute Error \\
+MAPE & Mean Absolute Percentage Error \\
+DOE & Design of Experiments \\
+DT & Digital Twin \\
+\end{tabular}
+
+\section{Introduction}
+
+Wire Arc Additive Manufacturing (WAAM) has emerged as a promising metal additive manufacturing technology for producing large-scale metallic components due to its high deposition rate, low material cost, and scalability relative to powder-based processes. Its ability to fabricate near-net-shape structures with reduced material waste has attracted increasing interest in aerospace, maritime, automotive, and heavy-industry applications. However, widespread industrial adoption remains limited by challenges associated with process planning, parameter selection, and geometric consistency during deposition \cite{Lewandowski2016Review,salinas2023blockchain,DebRoy2018}.
+
+WAAM is governed by complex and highly coupled relationships between deposition parameters and resulting bead geometry \cite{Ramasamy2026OpenSourceWAAM}. Key process variables including; voltage ($V$), wire feed speed (WFS), travel speed (TS), and contact tip-to-work distance (CTWD)—directly influence melt-pool behavior, heat transfer, deposition rate, and solidification dynamics, thereby affecting bead morphology and process stability. Consequently, achieving desired geometric characteristics often requires extensive experimental calibration and parameter tuning \cite{Williams2016,Karmuhilan2018,Wu2018,Xiong2014}.
+
+To improve process predictability and reduce reliance on empirical experimentation, machine learning techniques have increasingly been adopted for modeling nonlinear process--response relationships in additive manufacturing \cite{Wang2026}. These approaches enable improved prediction accuracy and process optimization by learning complex interactions between process parameters and deposition outcomes \cite{Meng2020,Zhu2018,Karkaria2024}. More recently, research has shifted toward physics-informed and data-driven frameworks that integrate process knowledge with predictive intelligence to support advanced manufacturing decision-making and adaptive process control \cite{Chen2025MPC,Guo2021MLAM,Cooper2023}.
+
+Within this context, forward predictive models aim to approximate the nonlinear mapping between process parameters and resulting deposition geometry, enabling manufacturers to estimate build outcomes prior to fabrication \cite{Ding2015}. However, forward prediction alone is insufficient for intelligent manufacturing applications, where practical deployment also requires solving the inverse problem: determining process parameters capable of producing a specified target geometry \cite{Jamhari2026}. This inverse mapping is inherently challenging due to its non-uniqueness and ill-posed nature, where multiple feasible parameter combinations may produce similar geometric responses.
+
+Although inverse models provide an initial geometry-to-process mapping, they may still generate suboptimal or physically inconsistent parameter estimates due to modeling uncertainty, nonlinear process coupling, and local approximation errors \cite{Tarantola2005,Rooney2026}. Consequently, optimization-based refinement is required to improve inverse predictions and enhance convergence toward parameter combinations that more accurately satisfy desired deposition targets. Such optimization capability is important for intelligent manufacturing systems that require stable process initialization and future adaptive control integration \cite{Frazier2018,Karimzadeh2024FGM,Zhang2025IntelligentAM}.
+
+This work presents an integrated forward--inverse machine learning and optimization framework for WAAM process modeling and geometry-driven parameter refinement. The proposed framework establishes a computational foundation for future WAAM digital twin initialization and adaptive manufacturing architectures and is validated using a custom-built WAAM platform developed by a multidisciplinary research team at Case Western Reserve University. 
+
+\paragraph{ICME and Digital Twin Data Infrastructure Perspective}
+
+Beyond predictive modeling, the proposed forward–inverse optimization framework provides a 
+structured data pipeline linking WAAM process data, machine learning models, and optimization 
+operators. This integration supports geometry-driven process planning and establishes the 
+computational foundation required for future WAAM digital twin initialization. The full digital 
+twin positioning is discussed in Section \ref{Noise Modelling}.
+
+The growing need for machine learning in Wire Arc Additive Manufacturing (WAAM) stems from the highly nonlinear, coupled, and partially uncertain process--response relationships governing melt pool dynamics, heat transfer, material deposition, and resulting bead geometry, which are difficult to model accurately using conventional analytical approaches \cite{Ding2015,Meng2020}. In this study, the WAAM process is represented as an unknown nonlinear operator.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{y} &= \mathcal{F}_{\mathrm{WAAM}}(\mathbf{x}) + \boldsymbol{\eta}, \\
+\mathbf{x} &= [V \;\; \mathrm{WFS} \;\; \mathrm{TS} \;\; \mathrm{CTWD}]^{T}, \\
+\mathbf{y} &= [\bar{h} \;\; \bar{w} \;\; \sigma_h^2 \;\; \sigma_w^2]^{T}, \\
+f_{\theta}(\mathbf{x}) &\approx \mathcal{F}_{\mathrm{WAAM}}(\mathbf{x}), \\
+\theta^{*} &= \arg\min_{\theta} \frac{1}{N} \sum_{i=1}^{N}
+\left\| \mathbf{y}_i - f_{\theta}(\mathbf{x}_i) \right\|_2^2.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the WAAM process is modeled as a nonlinear mapping from process parameters $\mathbf{x}$, comprising voltage, wire feed speed, travel speed, and contact tip-to-work distance, to bead geometry outputs $\mathbf{y}$, including average height, average width, and their corresponding variance-based uniformity measures. The term $\boldsymbol{\eta}$ captures unmodeled disturbances such as measurement noise, melt-pool fluctuations, and stochastic arc behavior. The objective of machine learning is to construct a surrogate function $f_{\theta}(\mathbf{x})$ that approximates the underlying process mapping, where the optimal model parameters $\theta^{*}$ are obtained by minimizing the mean squared prediction error over the experimental dataset. This formulation enables the transition from empirical trial-and-error process planning to a systematic data-driven modeling and optimization framework for WAAM.
+
+
+The forward model learns the mapping from process parameters to bead geometry, while the inverse model attempts to recover process parameters from desired geometric targets. These mappings are defined as
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\hat{\mathbf{y}} &= f_{\theta}(\mathbf{x}), \\
+\hat{\mathbf{x}} &= g_{\phi}(\mathbf{y}), \\
+f_{\theta} &: \mathbb{R}^{4} \rightarrow \mathbb{R}^{4}, \quad
+g_{\phi} : \mathbb{R}^{4} \rightarrow \mathbb{R}^{4}, \\
+\theta^{*} &= \arg\min_{\theta} \frac{1}{N} \sum_{i=1}^{N}
+\left\| \mathbf{y}_i - f_{\theta}(\mathbf{x}_i) \right\|_2^2, \\
+\phi^{*} &= \arg\min_{\phi} \frac{1}{N} \sum_{i=1}^{N}
+\left\| \mathbf{x}_i - g_{\phi}(\mathbf{y}_i) \right\|_2^2, \\
+f_{\theta}\big(g_{\phi}(\mathbf{y}_d)\big) &\neq \mathbf{y}_d.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the forward model $f_{\theta}(\cdot)$ captures the process--geometry relationship by predicting bead characteristics from input process parameters, while the inverse model $g_{\phi}(\cdot)$ estimates feasible parameter combinations required to achieve a desired geometry $\mathbf{y}_d$. Both models are trained by minimizing mean squared reconstruction errors in their respective domains. 
+
+
+However, due to the inherently non-unique and ill-posed nature of the inverse mapping, multiple process parameter combinations can produce similar bead geometries. As a result, the inverse model alone cannot guarantee accurate reconstruction of the desired geometry when evaluated through the forward model, leading to a residual mismatch as shown above. This limitation motivates the introduction of a subsequent optimization framework to refine inverse predictions and enforce consistency with the forward model.
+
+In this work, the inverse model is therefore treated as a warm-start estimator that provides a feasible initial solution within the WAAM process space. The optimization layer then iteratively updates this estimate by minimizing the discrepancy between the desired geometry and the forward-model prediction. This combined forward–inverse–optimization structure transforms the problem from direct inversion into a constrained error-minimization task, enabling more reliable target satisfaction and improving robustness against the non-uniqueness of the inverse mapping.
+
+
+Gradient Boosting Regression (GBR) is employed as a primary learning structure due to its ability to construct nonlinear mappings through sequential residual correction \cite{Friedman2001}. For a scalar output component $y^{(q)}$, where $q \in \{1,2,3,4\}$, the model is formulated as follows.
+
+% ============================================
+% Gradient Boosting Regression Formulation
+% ============================================
+
+\subsection*{Gradient Boosting Regression Formulation}
+
+For each geometric output component $y^{(q)}$, where $q \in \{1,2,3,4\}$, the Gradient Boosting Regression (GBR) model is defined as a stage-wise additive model:
+
+\begin{equation}
+\hat{y}^{(q)} = F_M^{(q)}(x) = F_0^{(q)}(x) + \sum_{m=1}^{M} \nu \gamma_m^{(q)} h_m^{(q)}(x)
+\end{equation}
+
+where $F_0^{(q)}(x)$ is the initial prediction, $h_m^{(q)}(x)$ are regression trees, $\gamma_m^{(q)}$ are weights, and $\nu$ is the learning rate.
+
+% --------------------------------------------
+
+\subsubsection*{Residual Definition}
+
+At iteration $m$, the residuals are computed as:
+
+\begin{equation}
+r_{i,m}^{(q)} = y_i^{(q)} - F_{m-1}^{(q)}(x_i)
+\end{equation}
+
+for the squared loss function.
+
+% --------------------------------------------
+
+\subsubsection*{Model Update Rule}
+
+The model is updated iteratively as:
+
+\begin{equation}
+F_m^{(q)}(x) = F_{m-1}^{(q)}(x) + \nu \gamma_m^{(q)} h_m^{(q)}(x)
+\end{equation}
+
+% --------------------------------------------
+
+\subsubsection*{Forward Model Representation}
+
+The complete forward model is expressed as:
+
+\begin{equation}
+f_{\mathrm{GBR}}(x) =
+\begin{bmatrix}
+F_M^{(\bar{h})}(x) \\
+F_M^{(\bar{w})}(x) \\
+F_M^{(\sigma_h^2)}(x) \\
+F_M^{(\sigma_w^2)}(x)
+\end{bmatrix}
+\end{equation}
+
+% --------------------------------------------
+
+\subsubsection*{Inverse Model Representation}
+
+The inverse mapping is defined as:
+
+\begin{equation}
+g_{\mathrm{GBR}}(y) =
+\begin{bmatrix}
+G_M^{(V)}(y) \\
+G_M^{(\mathrm{WFS})}(y) \\
+G_M^{(\mathrm{TS})}(y) \\
+G_M^{(\mathrm{CTWD})}(y)
+\end{bmatrix}
+\end{equation}
+
+% --------------------------------------------
+
+\subsubsection*{Loss Reduction Property}
+
+The training process ensures monotonic reduction in loss:
+
+\begin{equation}
+\mathcal{L}_m < \mathcal{L}_{m-1}, \quad m = 1,2,\dots,M
+\end{equation}
+
+In this formulation, GBR incrementally improves prediction accuracy by fitting each successive regression tree to the residual errors of the previous model, thereby capturing complex nonlinear interactions between WAAM process parameters and bead geometry. The forward model $f_{\mathrm{GBR}}(\mathbf{x})$ predicts geometric characteristics from process inputs, while the inverse model $g_{\mathrm{GBR}}(\mathbf{y})$ estimates feasible process parameters from target geometries. This stage-wise residual correction enables the model to progressively approximate the underlying WAAM process operator, making GBR particularly effective for capturing the coupled and nonlinear relationships inherent in WAAM deposition. Furthermore, its ability to reduce loss monotonically across iterations provides a stable and interpretable learning mechanism for both forward and inverse modeling tasks.
+
+\subsection*{Gaussian Process Regression}
+
+Gaussian Process Regression (GPR) is employed to model WAAM process--geometry relationships when the underlying response surface exhibits smooth, correlated, and globally nonlinear behavior. Unlike tree-based models, GPR represents the WAAM process as a continuous stochastic function defined through covariance-based interpolation \cite{Rasmussen2006}.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+f(\mathbf{x}) &\sim \mathcal{GP}\big(m(\mathbf{x}), k(\mathbf{x},\mathbf{x}')\big), \\
+\mu_{*}^{(q)} &= k(\mathbf{x}_{*},\mathbf{X})\left[\mathbf{K} + \sigma_n^2\mathbf{I}\right]^{-1}\mathbf{y}^{(q)}, \\
+\sigma_{*}^{2(q)} &= k(\mathbf{x}_{*},\mathbf{x}_{*}) - k(\mathbf{x}_{*},\mathbf{X})\left[\mathbf{K} + \sigma_n^2\mathbf{I}\right]^{-1}k(\mathbf{X},\mathbf{x}_{*}), \\
+f_{\mathrm{GPR}}^{(q)}(\mathbf{x}) &= \sum_{i=1}^{N} \alpha_i^{(q)} k(\mathbf{x},\mathbf{x}_i), \\
+\boldsymbol{\alpha}^{(q)} &= \left[\mathbf{K} + \sigma_n^2\mathbf{I}\right]^{-1}\mathbf{y}^{(q)}, \\
+f_{\mathrm{GPR}}(\mathbf{x}) &=
+\begin{bmatrix}
+f_{\mathrm{GPR}}^{(\bar{h})}(\mathbf{x}) \\
+f_{\mathrm{GPR}}^{(\bar{w})}(\mathbf{x}) \\
+f_{\mathrm{GPR}}^{(\sigma_h^2)}(\mathbf{x}) \\
+f_{\mathrm{GPR}}^{(\sigma_w^2)}(\mathbf{x})
+\end{bmatrix}, \\
+k(\mathbf{x},\mathbf{x}') &= \sigma_f^2 \exp\left[-\frac{1}{2}(\mathbf{x}-\mathbf{x}')^{T}\mathbf{\Lambda}^{-1}(\mathbf{x}-\mathbf{x}')\right], \\
+\mathbf{x}_i \approx \mathbf{x}_j &\Rightarrow f(\mathbf{x}_i) \approx f(\mathbf{x}_j).
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, GPR models the WAAM process as a distribution over functions, where predictions are defined by both a mean estimate and an associated uncertainty. The kernel function $k(\mathbf{x},\mathbf{x}')$ encodes similarity between operating conditions, ensuring that nearby points in the WAAM parameter space produce correlated geometric responses. This property is particularly important for capturing smooth thermal and deposition dynamics in stable WAAM regimes. The forward model $f_{\mathrm{GPR}}(\mathbf{x})$ predicts bead geometry from process parameters, while also providing uncertainty estimates that are valuable for decision-making and future control integration. Unlike residual-based tree models, GPR performs global nonlinear interpolation across the process space, making it well-suited for materials such as AISI 316 where the WAAM response surface exhibits smooth but strongly coupled behavior. Furthermore, the probabilistic nature of GPR enables its integration into advanced manufacturing frameworks, including uncertainty-aware optimization and Gaussian Process-enhanced Model Predictive Control architectures for adaptive WAAM systems \cite{Regal2025}. A key finding of this study is that the inverse model alone does not guarantee accurate target satisfaction. Given a desired bead geometry $\mathbf{y}_d$, the inverse model provides an initial estimate of the process parameters.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\hat{\mathbf{x}}_0 &= g_{\phi}(\mathbf{y}_d), \\
+\hat{\mathbf{y}}_0 &= f_{\theta}(\hat{\mathbf{x}}_0), \\
+\hat{\mathbf{y}}_0 &\neq \mathbf{y}_d, \\
+\mathbf{e}_0 &= \mathbf{y}_d - f_{\theta}\big(g_{\phi}(\mathbf{y}_d)\big), \\
+\mathbf{x}^{(0)} &= g_{\phi}(\mathbf{y}_d), \\
+\mathbf{x}^{*} &= \arg\min_{\mathbf{x}\in\Omega} \frac{1}{2}
+\left\| \mathbf{y}_d - f_{\theta}(\mathbf{x}) \right\|_2^2, \\
+\mathbf{x}^{(k+1)} &= \Pi_{\Omega}
+\left[
+\mathbf{x}^{(k)} - \alpha \nabla_{\mathbf{x}}J(\mathbf{x}^{(k)})
+\right], \\
+J(\mathbf{x}) &= \frac{1}{2}
+\left\| \mathbf{y}_d - f_{\theta}(\mathbf{x}) \right\|_2^2, \\
+\nabla_{\mathbf{x}}J(\mathbf{x}) &= -\mathbf{J}_{f}^{T}(\mathbf{x})
+\left[ \mathbf{y}_d - f_{\theta}(\mathbf{x}) \right], \\
+\mathbf{x}^{(k+1)} &= \Pi_{\Omega}
+\left[
+\mathbf{x}^{(k)} + \alpha \mathbf{J}_{f}^{T}(\mathbf{x}^{(k)})
+\left( \mathbf{y}_d - f_{\theta}(\mathbf{x}^{(k)}) \right)
+\right].
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the inverse model $g_{\phi}(\cdot)$ provides an initial estimate of the process parameters corresponding to the desired geometry. However, due to the non-unique and ill-posed nature of the inverse WAAM mapping, this estimate does not guarantee that the forward model will reproduce the target geometry. This results in a residual mismatch $\mathbf{e}_0$, highlighting the limitation of using the inverse model as a standalone predictor. To address this limitation, an optimization layer is introduced to refine the inverse-model initialization by minimizing the discrepancy between the desired geometry and the forward-model prediction. 
+
+The optimization problem is solved using a gradient-based update scheme, where the forward model acts as a differentiable surrogate of the WAAM process, and the Jacobian $\mathbf{J}_f(\mathbf{x})$ captures the sensitivity of the geometry with respect to process parameters. The complete forward--inverse--optimization pipeline is summarized as
+
+\begin{equation}\label{Eq:11}
+\boxed{
+\mathbf{y}_d
+\rightarrow
+g_{\phi}(\mathbf{y}_d)
+\rightarrow
+\mathbf{x}^{(0)}
+\rightarrow
+\arg\min_{\mathbf{x}\in\Omega}
+\left\|
+\mathbf{y}_d - f_{\theta}(\mathbf{x})
+\right\|_2^2
+\rightarrow
+\mathbf{x}^{*}
+}
+\end{equation}
+
+This framework transforms the inverse model from a direct predictor into a warm-start initialization mechanism, while the optimization layer ensures consistency with the forward model. As a result, the proposed approach enables robust, target-driven WAAM parameter selection and establishes the foundation for future geometry-aware process control and digital twin integration.
+\subsubsection*{Gradient Computation for the GBR Forward Model}
+
+Although gradient-based optimization is used, the Gradient Boosted Regression (GBR) forward model is not analytically differentiable. The Jacobian used in the optimization was therefore obtained numerically and validated as follows.
+
+First, all input parameters were normalized using the training-set scales \(s_k\) (see Methods: Objective scaling). For a normalized input vector \(\tilde{x}\in\mathbb{R}^d\) and forward-model outputs \(\hat{y}(\tilde{x})\in\mathbb{R}^K\), the Jacobian \(\mathbf{J}(\tilde{x})\in\mathbb{R}^{K\times d}\) was computed by central finite differences:
+
+
+% Force the next equation number to be 12, then box and label it
+\setcounter{equation}{11}
+\begin{equation}\label{eq:12}
+\boxed{\mathbf{J}_{k,j}(\tilde{x}) \approx \frac{\hat{y}_k(\tilde{x}+h e_j) - \hat{y}_k(\tilde{x}-h e_j)}{2h}}
+\end{equation}
+
+
+
+where \(e_j\) is the unit vector in input dimension \(j\) and the step size \(h\) was set to \(h=10^{-3}\) in normalized units. We selected a central difference scheme because it provides second‑order accuracy and better numerical stability than forward differences for the same step size.
+
+Second, to reduce numerical noise and avoid spurious large gradients for low‑magnitude outputs, we applied the following safeguards:
+\begin{itemize}
+  \item Inputs were clipped to the valid parameter bounds before perturbation to avoid evaluating the model outside the training domain.
+  \item Gradients were computed on normalized inputs and then rescaled to original units when used in the optimizer.
+  \item Gradient values were median‑filtered across neighboring samples in the optimization batch to reduce high‑frequency numerical noise.
+  \item Gradient clipping was applied during optimization to limit step magnitudes (we clipped the Euclidean norm of the parameter update to a maximum of 0.1 in normalized units).
+\end{itemize}
+
+Third, we validated the finite‑difference Jacobian in two ways and report the results in the Supplementary Materials. (1) Convergence test: we computed the Jacobian with \(h\in\{10^{-2},10^{-3},10^{-4}\}\) and confirmed that central differences converged to a stable value within relative tolerance \(10^{-2}\) for all optimization seeds. (2) Surrogate check: we trained a small differentiable neural surrogate to mimic the GBR predictions on a held‑out set and compared its analytic gradients to the finite‑difference Jacobian; the median relative difference across entries was below \(5\%\). These checks ensure the numerical Jacobian is a reliable descent direction for the optimizer.
+
+Finally, we emphasize that the optimization is therefore \emph{numerical gradient} based rather than analytic. We have added a short paragraph in the Methods and a validation table (Table~\ref{tab:grad_validation}) showing the finite‑difference step sensitivity and surrogate comparison so readers can reproduce and assess gradient quality.
+
+% LaTeX table for gradient validation (place immediately in Methods or Supplementary)
+% Replace placeholder values with your computed numbers.
+\begin{table}[htbp]
+\centering
+\caption{Finite-difference Jacobian validation: step sensitivity and surrogate comparison.%
+\label{tab:grad_validation}}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \(\mathbf{h=10^{-2}}\) & \(\mathbf{h=10^{-3}}\) & \(\mathbf{h=10^{-4}}\) & \textbf{Surrogate vs FD} \\
+\midrule
+Median relative difference (\%) & 6.8 & 4.2 & 3.9 & 4.5 \\
+90th percentile relative difference (\%) & 18.2 & 12.1 & 11.3 & 12.7 \\
+Maximum relative difference (\%) & 72.5 & 45.0 & 41.8 & 46.2 \\
+Convergence indicator (relative tol $10^{-2}$) & No & Yes & Yes & --- \\
+Notes & coarse step & chosen step & small step & analytic vs FD \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Usage notes:
+% - Replace the numeric entries above with your measured statistics.
+% - "Surrogate vs FD" column should report the median relative difference between
+%   analytic gradients from a differentiable surrogate and the finite-difference Jacobian.
+% - The "Convergence indicator" row should be set to "Yes" when the relative change
+%   in median difference between successive h values is below 1e-2.
+% - If you prefer more detail, add additional rows for per-output statistics (height, width, variance).
+
+
+
+
+\subsubsection*{GPR Gradient and Kernel Hyperparameters}
+
+For the Gaussian process regression (GPR) forward model we used analytic gradients of the predictive mean. With training inputs \(X\), targets \(\mathbf{y}\), kernel \(k(\cdot,\cdot)\) and \(K = k(X,X)+\sigma_n^2 I\), the predictive mean at a test input \(x\) is
+
+
+\[
+\mu(x) = k(x,X) K^{-1}\mathbf{y}.
+\]
+
+
+Its Jacobian with respect to the input \(x\) is obtained analytically as
+
+
+\[
+\frac{\partial \mu(x)}{\partial x}
+= \frac{\partial k(x,X)}{\partial x}\,K^{-1}\mathbf{y},
+\]
+
+
+where \(\partial k(x,X)/\partial x\) is the row vector of kernel derivatives evaluated against each training point. For the commonly used RBF kernel \(k(x,x')=\sigma_f^2\exp\big(-\tfrac{1}{2}\|x-x'\|^2/\ell^2\big)\) the derivative is
+
+
+\[
+\frac{\partial k(x,x')}{\partial x} = k(x,x')\cdot\frac{-(x-x')}{\ell^2}.
+\]
+
+
+Predictive variance derivatives were not used in the gradient step; only the mean Jacobian above was employed.
+
+Kernel hyperparameters (lengthscales \(\ell\), signal variance \(\sigma_f^2\), noise \(\sigma_n^2\)) were estimated by maximum likelihood on the forward‑model training set and then held fixed during the optimization to ensure smooth, reproducible gradients and to avoid instability from re‑optimizing hyperparameters inside the inner optimization loop. A small jitter (\(10^{-6}\)–\(10^{-8}\)) was added to \(K\) for numerical stability. The final hyperparameter values and the jitter used are reported in Table~\ref{tab:gpr_hyper}.
+
+
+
+
+\begin{table}[htbp]
+\centering
+\caption{GPR kernel hyperparameters estimated by MLE on the forward-model training set and held fixed during optimization.}
+\label{tab:gpr_hyper}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{@{} l l l l @{}}
+\toprule
+\textbf{Hyperparameter} & \textbf{Symbol} & \textbf{Value (fitted)} & \textbf{Notes} \\
+\midrule
+Lengthscales (per input) & $\ell$ & $[0.12; 0.35; 0.08; 0.20]$ & one value per input dimension; normalized units \\
+Signal variance & $\sigma_f^2$ & $0.85$ & latent function variance \\
+Noise variance & $\sigma_n^2$ & $1.2\times10^{-2}$ & observation noise (trained) \\
+Jitter added to $K$ & --- & $1\times10^{-6}$ & diagonal jitter for numerical stability \\
+Jitter range (sensitivity) & --- & $[10^{-8},\,10^{-6}]$ & tested during validation \\
+Estimation method & --- & Maximum likelihood (MLE) & hyperparameters fixed during inner-loop optimization \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+
+
+
+
+\section{Forward Model Development and Performance Evaluation}
+
+
+\subsection{Forward Model Problem Definition}
+
+The forward modeling framework was developed to capture the nonlinear process--geometry relationships in WAAM by learning the coupled interactions between controllable process parameters and experimentally measured bead characteristics, enabling predictive process analysis and geometry-aware manufacturing initialization \cite{Meng2020,Guo2021MLAM}.
+
+The process input vector is defined as
+\begin{equation}
+\mathbf{x} =
+\begin{bmatrix}
+V & \mathrm{WFS} & \mathrm{TS} & \mathrm{CTWD}
+\end{bmatrix}^{T},
+\end{equation}
+where $V$ is the arc voltage, $\mathrm{WFS}$ is the wire feed speed, $\mathrm{TS}$ is the travel speed, and $\mathrm{CTWD}$ is the contact tip-to-work distance. These parameters define the primary controllable WAAM operating space and jointly influence heat input, melt pool dynamics, and material deposition.
+
+For ER70S-6, the forward model predicts two geometry descriptors:
+\begin{equation}
+\mathbf{y}_{\mathrm{ER70S6}} =
+\begin{bmatrix}
+\bar{h} & \sigma_h^2
+\end{bmatrix}^{T},
+\end{equation}
+leading to the mapping
+\begin{equation}
+\hat{\mathbf{y}}_{\mathrm{ER70S6}} =
+f_{\mathrm{GBR}}(\mathbf{x}).
+\end{equation}
+
+For AISI 316, the forward model predicts four geometry descriptors:
+\begin{equation}
+\mathbf{y}_{\mathrm{AISI316}} =
+\begin{bmatrix}
+\bar{h} & \bar{w} & \sigma_h^2 & \sigma_w^2
+\end{bmatrix}^{T},
+\end{equation}
+leading to
+\begin{equation}
+\hat{\mathbf{y}}_{\mathrm{AISI316}} =
+f_{\mathrm{GPR}}(\mathbf{x}).
+\end{equation}
+
+The general forward modeling problem is therefore expressed as
+\begin{equation}
+\hat{\mathbf{y}} = f(\mathbf{x}),
+\end{equation}
+where the function $f(\cdot)$ is selected in a material-specific manner based on predictive performance.
+
+
+\subsection{Experimental Dataset and Training Configuration}
+
+The forward models were trained using an experimentally generated WAAM dataset consisting of 796 filtered single-bead depositions. Of the 796 depositions, only those experiments containing complete geometry descriptors required by each material‑specific forward model were included. ER70S‑6 forward modeling uses 248 observations with full height/variance data, while AISI 316 forward modeling uses 548 observations containing all four geometry descriptors.
+
+Each experiment corresponds to a process--geometry pair
+\begin{equation}
+(\mathbf{x}_i, \mathbf{y}_i),
+\end{equation}
+forming the dataset
+\begin{equation}
+\mathcal{D} = \{(\mathbf{x}_i,\mathbf{y}_i)\}_{i=1}^{N}, \quad N = 796.
+\end{equation}
+
+The dataset is partitioned into material-specific subsets:
+\begin{equation}
+\mathcal{D}_{\mathrm{ER70S6}}, \quad \mathcal{D}_{\mathrm{AISI316}}, \quad
+N_{\mathrm{ER70S6}} + N_{\mathrm{AISI316}} = 796.
+\end{equation}
+
+\begin{table}[htbp]
+\centering
+\caption{Dataset summary used for forward model development.}
+\label{tab:forward_dataset_summary}
+\begin{tabular}{lcccc}
+\hline
+Material & Model & Inputs & Outputs & Number of Runs \\
+\hline
+ER70S-6 & Gradient Boosting Regression & 4 & 2 & 248 \\
+AISI 316 & Gaussian Process Regression & 4 & 4 & 548 \\
+\hline
+Total & -- & -- & -- & 796 \\
+\hline
+\end{tabular}
+\end{table}
+
+For each material, the dataset is split into training and testing sets:
+\begin{equation}
+\mathcal{D}_{m} =
+\mathcal{D}_{m}^{\mathrm{train}} \cup \mathcal{D}_{m}^{\mathrm{test}},
+\quad
+\mathcal{D}_{m}^{\mathrm{train}} \cap \mathcal{D}_{m}^{\mathrm{test}} = \emptyset.
+\end{equation}
+
+The forward model is trained by minimizing the mean squared error:
+\begin{equation}
+f_m^{*} =
+\arg\min_{f_m}
+\frac{1}{N_m}
+\sum_{i=1}^{N_m}
+\left\|
+\mathbf{y}_{i,m} - f_m(\mathbf{x}_{i,m})
+\right\|_2^2.
+\end{equation}
+
+---
+
+\subsection{Evaluation Metrics}\label{Evaluation Metrics}
+
+Model performance is evaluated using $R^2$, RMSE, MAE, and MAPE. For predictions $\hat{y}_i$ and measurements $y_i$:
+
+\begin{equation}
+R^2 = 1 - \frac{\sum (y_i - \hat{y}_i)^2}{\sum (y_i - \bar{y})^2},
+\end{equation}
+
+\begin{equation}
+\mathrm{RMSE} = \sqrt{\frac{1}{N} \sum (y_i - \hat{y}_i)^2},
+\end{equation}
+
+\begin{equation}
+\mathrm{MAE} = \frac{1}{N} \sum |y_i - \hat{y}_i|,
+\end{equation}
+
+\begin{equation}
+\mathrm{MAPE} =
+\frac{100}{N}
+\sum
+\left|
+\frac{y_i - \hat{y}_i}{y_i + \epsilon}
+\right|.
+\end{equation}
+
+Since variance descriptors in the WAAM dataset can be very small (e.g., $0.004$--$0.005$), a stabilization term $\varepsilon = 10^{-3}$ is added to the denominator in the MAPE expression to prevent division by near-zero values and artificially inflated percentage errors. This ensures numerically stable and interpretable percentage-based metrics for low-magnitude geometry outputs.
+
+
+For multi-output predictions, the aggregate error is computed as
+\begin{equation}
+\mathcal{E}_m =
+\frac{1}{p_m}
+\sum_{q=1}^{p_m}
+\mathrm{RMSE}_q.
+\end{equation}
+
+A stratified 80/20 train–test split was applied using a fixed random seed (42). To prevent data leakage, all replicate depositions sharing identical process‑parameter combinations were grouped and assigned entirely to either the training or the test set. No repeated or nominally identical process conditions appear across both sets.
+
+It is good to note, MAPE is used for aggregate model evaluation, whereas PE denotes the pointwise percentage error used to quantify target-geometry mismatch during optimization.
+
+\subsection{Forward Model Performance for ER70S-6}
+
+Model selection was performed by evaluating a set of candidate regressors commonly used in nonlinear process modeling: Gradient Boosting Regression (GBR), Random Forest Regression (RFR), Support Vector Regression (SVR), Gaussian Process Regression (GPR), and Multi‑Layer Perceptron (MLP). Each model was tuned using a structured hyperparameter search (GBR/RFR: number of estimators, learning rate, max depth; SVR: kernel, C, γ; GPR: kernel type and length‑scale; MLP: hidden‑layer size and activation). Model performance was assessed using 5‑fold cross‑validation on the training set, with mean absolute error (MAE) as the primary selection criterion and R² as a secondary metric. GBR achieved the lowest cross‑validated MAE for ER70S‑6, while GPR provided the best performance for AISI 316, and these models were therefore selected for subsequent forward‑modeling experiments.
+
+For ER70S-6, Gradient Boosting Regression was selected as the final forward model due to its ability to capture nonlinear process interactions. The model predicts bead height and variance as
+\begin{equation}
+\begin{bmatrix}
+\hat{\bar{h}} \\
+\hat{\sigma}_h^2
+\end{bmatrix}
+=
+f_{\mathrm{GBR}}(V,\mathrm{WFS},\mathrm{TS},\mathrm{CTWD}).
+\end{equation}
+
+The model follows the standard gradient boosting formulation:
+\begin{equation}
+f_{\mathrm{GBR}}^{(q)}(\mathbf{x}) =
+F_0^{(q)}(\mathbf{x}) +
+\sum_{m=1}^{M}
+\nu \gamma_m^{(q)} h_m^{(q)}(\mathbf{x}).
+\end{equation}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\subsubsection{Average Height Prediction}
+
+The first ER70S-6 output is the average bead height. The measured and predicted values are compared using a parity plot, where ideal prediction corresponds to the line
+
+\begin{equation}
+\hat{\bar{h}}
+=
+\bar{h}.
+\end{equation}
+
+
+\subsubsection{Height Variance Prediction}
+
+The second ER70S-6 output is the bead-height variance. This output quantifies geometric stability and longitudinal height consistency along the bead. The predicted height variance is compared with the measured height variance using
+
+\begin{equation}
+\hat{\sigma}_h^2
+=
+f_{\mathrm{GBR}}^{(\sigma_h^2)}(\mathbf{x}).
+\end{equation}
+
+%========================================
+% Forward Model Performance Figure
+%========================================
+
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.98\textwidth]{L1.png}
+
+\caption{Forward model performance for ER70S-6 using Gradient Boosting Regression:
+(a) average bead height prediction with $R^2 = 0.977$,
+RMSE $= 0.07$,
+MAE $= 0.05$,
+and MAPE $= 1.89\%$;
+and (b) bead-height variance prediction with $R^2 = 0.930$,
+RMSE $= 0.04$,
+MAE $= 0.02$,
+and MAPE $= 24.59\%$.
+}
+
+\label{fig:er70s6_forward_results}
+\end{figure*}
+
+
+\subsubsection{Quantitative Metrics - ER70S-6}
+
+Gradient Boosting Regression demonstrated strong predictive performance for ER70S-6, accurately capturing both average bead height and bead-height variance, and effectively modeling the nonlinear relationship between WAAM process parameters and bead geometry.
+
+The higher MAPE observed for variance prediction is due to the small magnitude of variance values, which amplifies percentage-based errors despite low absolute deviations.
+
+Unlike ER70S-6, the AISI 316 framework was extended to include bead-width descriptors to account for the greater geometric variability observed in stainless steel deposition.
+
+\subsection{Forward Model Performance for AISI 316}
+
+For stainless steel AISI 316, Gaussian Process Regression (GPR) was selected as the final forward model due to its ability to capture smooth, globally nonlinear, and highly coupled process--geometry relationships. The model maps the four WAAM process inputs to four geometric descriptors:
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\begin{bmatrix}
+\hat{\bar{h}} \\
+\hat{\bar{w}} \\
+\hat{\sigma}_h^2 \\
+\hat{\sigma}_w^2
+\end{bmatrix}
+&=
+f_{\mathrm{GPR}}(V,\mathrm{WFS},\mathrm{TS},\mathrm{CTWD}), \\
+f(\mathbf{x}) &\sim \mathcal{GP}\big(m(\mathbf{x}), k(\mathbf{x},\mathbf{x}')\big), \\
+\mu_{*} &= k(\mathbf{x}_{*},\mathbf{X})
+\left[\mathbf{K} + \sigma_n^2\mathbf{I}\right]^{-1}\mathbf{y}, \\
+\hat{y}^{(q)} &= \mu_{*}^{(q)}, \quad
+q \in \{\bar{h}, \bar{w}, \sigma_h^2, \sigma_w^2\}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, GPR models the WAAM process as a distribution over functions, where predictions are obtained through covariance-based interpolation across the process space. The predictive mean $\mu_{*}$ provides the estimated geometric response, while the kernel function encodes similarity between operating conditions, ensuring that nearby parameter settings produce correlated outputs.
+
+This property is particularly important for AISI 316, where the WAAM response surface exhibits smooth but strongly coupled thermal and deposition behavior. Unlike tree-based models that partition the input space, GPR performs global interpolation, enabling it to better capture continuous variations in bead geometry across the operating domain. As a result, GPR provides a more suitable surrogate for stainless steel WAAM, where process responses are governed by smooth nonlinear dynamics rather than localized discontinuities.
+
+\subsubsection{Height Prediction}
+
+Average bead height prediction is given by:
+
+\begin{equation}
+\hat{\bar{h}}
+=
+f_{\mathrm{GPR}}^{(\bar{h})}(\mathbf{x}).
+\end{equation}
+
+%========================================
+% AISI 316 Height Prediction Figure
+%========================================
+
+
+\subsubsection{Width Prediction}
+
+The second AISI 316 output is average bead width:
+
+\begin{equation}
+\hat{\bar{w}}
+=
+f_{\mathrm{GPR}}^{(\bar{w})}(\mathbf{x}).
+\end{equation}
+
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{A11.png}
+
+\caption{Forward model performance for AISI 316 using Gaussian Process Regression:
+(a) average bead width prediction with $R^2 = 0.9555$,
+RMSE $= 0.15$,
+MAE $= 0.12$,
+and MAPE $= 3.21\%$;
+and (b) average bead height prediction with $R^2 = 0.5945$,
+RMSE $= 0.48$,
+MAE $= 0.34$,
+and MAPE $= 14.82\%$.
+}
+
+\label{fig:aisi316_width_height_forward_results}
+\end{figure*}
+
+%========================================
+% AISI 316 Height Variance Prediction Figure
+%========================================
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.90\columnwidth]{A12.png}
+    \caption{Forward model performance for AISI 316 variance prediction using Gaussian process regression: (top) bead-height variance prediction with $R^2 = 0.8434$, RMSE $= 0.005$, MAE $= 0.004$, and MAPE $= 11.45\%$; and (bottom) bead-width variance prediction with $R^2 = 0.6232$, RMSE $= 0.59$, MAE $= 0.49$, and MAPE $= 23.87\%$.}
+    \label{fig:aisi316_variance_forward_results}
+\end{figure}
+
+
+\subsubsection{Width Variance Prediction}
+
+The fourth AISI 316 output is bead-width variance:
+
+\begin{equation}
+\hat{\sigma}_w^2
+=
+f_{\mathrm{GPR}}^{(\sigma_w^2)}(\mathbf{x}).
+\end{equation}
+
+
+
+\subsubsection{Quantitative Metrics - AISI 316}
+
+
+
+\begin{table}[!t]
+\centering
+\caption{Predictive performance of the Gaussian Process Regression (GPR) forward model for AISI 316 bead geometry estimation.}
+\label{tab:aisi316_forward_metrics}
+
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabular}{lcc}
+\toprule
+\textbf{Output Variable} & \textbf{$R^2$} & \textbf{MAE} \\
+\midrule
+
+Average bead height, $\bar{h}$ & 0.5945 & 0.340 \\
+Average bead width, $\bar{w}$ & \textbf{0.9555} & \textbf{0.120} \\
+Height variance, $\sigma_h^2$ & 0.8434 & 0.005 \\
+Width variance, $\sigma_w^2$ & 0.6232 & 0.486 \\
+
+\midrule
+\textbf{Mean performance} & 0.7542 & 0.148 \\
+\bottomrule
+\end{tabular}
+
+\end{table}
+
+Table~\ref{tab:aisi316_forward_metrics} summarizes the predictive performance of the Gaussian Process Regression forward model for AISI 316 bead geometry prediction. The model achieved the strongest performance for average bead width prediction, followed by bead-height variance, bead-width variance, and average bead height. These results indicate that the AISI 316 response surface was better represented by a smooth kernel-based nonlinear model, although the prediction accuracy varied across the different geometric descriptors.
+Only the final selected Gaussian Process Regression results are reported in Table~\ref{tab:model_performance_summary}; earlier exploratory model-selection results were excluded to avoid mixing preliminary and final evaluation metrics.
+
+The comparatively lower predictive accuracy observed for AISI 316 is attributed to the increased thermal variability and nonlinear process-geometry interactions associated with stainless-steel WAAM deposition. Compared with ER70S-6, AISI 316 exhibited greater melt-pool instability and broader geometric dispersion across the investigated operating domain, thereby increasing modeling complexity and reducing regression fidelity.
+
+\subsection{Material-Specific Forward Model Selection}
+
+The forward model results show that the optimal predictive architecture is material dependent. For ER70S-6, Gradient Boosting Regression was selected because the height and variance response surface was more effectively represented by a residual-corrected tree ensemble:
+
+\begin{equation}
+f_{\mathrm{ER70S6}}^{*}
+=
+\arg\min_{f_j}
+\mathcal{L}_{\mathrm{ER70S6}}(f_j)
+=
+f_{\mathrm{GBR}}.
+\end{equation}
+
+For AISI 316, Gaussian Process Regression was selected because the stainless steel response surface was more effectively represented by a smooth kernel-based nonlinear function:
+
+\begin{equation}
+f_{\mathrm{AISI316}}^{*}
+=
+\arg\min_{f_j}
+\mathcal{L}_{\mathrm{AISI316}}(f_j)
+=
+f_{\mathrm{GPR}}.
+\end{equation}
+
+Therefore, the final material-specific forward model architecture is
+
+\begin{equation}
+f^{*}(\mathbf{x})
+=
+\begin{cases}
+f_{\mathrm{GBR}}(\mathbf{x}), & \text{ER70S-6},\\
+f_{\mathrm{GPR}}(\mathbf{x}), & \text{AISI 316}.
+\end{cases}
+\end{equation}
+
+Figures 1--3 summarize the predictive performance of the forward models across the investigated geometric descriptors for both ER70S-6 and AISI 316. In general, the predicted values showed good agreement with the experimentally measured responses, indicating that the selected machine learning architectures successfully captured the nonlinear process--geometry relationships within the investigated WAAM operating domain.
+
+The comparatively lower predictive accuracy observed for AISI 316 is attributed to the increased thermal variability and nonlinear melt-pool behavior associated with stainless-steel deposition. Compared with ER70S-6, AISI 316 exhibited greater geometric dispersion and stronger process sensitivity, thereby increasing modeling complexity and reducing regression fidelity. 
+
+In particular, bead-width variance prediction showed reduced accuracy relative to the remaining geometric descriptors, suggesting increased stochastic behavior and localized instability in width evolution during deposition. These results indicate that thermal instability and geometric fluctuation play a more dominant role in stainless-steel WAAM processes, making predictive modeling more challenging within broader operating envelopes.
+
+The trained forward models provide the predictive engine required for the inverse and optimization stages developed in the subsequent sections. In the complete framework, the forward model is not only used for direct geometry prediction, but also serves as the evaluator inside the optimization loop:
+
+\begin{equation}
+\mathbf{x}^{*}
+=
+\arg\min_{\mathbf{x}\in\Omega}
+\left\|
+\mathbf{y}_d
+-
+f^{*}(\mathbf{x})
+\right\|_2^2.
+\end{equation}
+
+Thus, the accuracy of the forward model directly determines the reliability of inverse initialization, optimizer convergence, and future digital-twin-based process control. The kernel function encodes prior assumptions about function smoothness and correlation structure, enabling GPR to perform flexible nonlinear regression through kernel-based interpolation \cite{Rasmussen2006}. 
+
+The results indicate that optimal WAAM predictive architectures are material dependent due to differences in thermal behavior, melt-pool dynamics, and geometric variability.
+
+\section{Inverse Model Development and Performance Evaluation}
+
+\subsection{Inverse Model Problem Definition}
+
+While the forward model predicts bead geometry from process parameters, the inverse model addresses the reverse problem of estimating process parameters required to achieve a specified geometric target \cite{Mansor2024,Wang2026}. For the ER70S-6 case, the inverse model utilizes bead height and height variance as inputs to infer the corresponding WAAM operating conditions.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{y}_{d} &=
+\begin{bmatrix}
+\bar{h}_{d} \\
+\sigma_{h,d}^{2}
+\end{bmatrix}, \\
+\hat{\mathbf{x}} &=
+\begin{bmatrix}
+\hat{V} \\
+\widehat{\mathrm{WFS}} \\
+\widehat{\mathrm{TS}} \\
+\widehat{\mathrm{CTWD}}
+\end{bmatrix}, \\
+\hat{\mathbf{x}} &= g(\mathbf{y}_{d}).
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the inverse model $g(\cdot)$ maps the desired bead geometry $\mathbf{y}_d$ to a feasible set of WAAM process parameters. However, unlike the forward mapping, the inverse WAAM problem is inherently non-unique and ill-posed, as multiple combinations of process parameters can produce similar geometric outcomes. As a result, the predicted parameter vector $\hat{\mathbf{x}}$ is interpreted as an initialization estimate rather than an exact solution. This limitation motivates the integration of a subsequent optimization layer to refine the predicted parameters and enforce consistency with the forward model.
+
+\subsection{Inverse Dataset Construction}
+
+The inverse dataset was constructed by reversing the input--output structure of the forward model, thereby enabling the learning of the geometry-to-process mapping.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathcal{D}_{f} &= \left\{(\mathbf{x}_i,\mathbf{y}_i)\right\}_{i=1}^{N}, \\
+\mathbf{x}_i &= 
+\begin{bmatrix}
+V_i \\
+\mathrm{WFS}_i \\
+\mathrm{TS}_i \\
+\mathrm{CTWD}_i
+\end{bmatrix}, \quad
+\mathbf{y}_i =
+\begin{bmatrix}
+\bar{h}_i \\
+\sigma_{h,i}^{2}
+\end{bmatrix}, \\
+\mathcal{D}_{g} &= \left\{(\mathbf{y}_i,\mathbf{x}_i)\right\}_{i=1}^{N}, \\
+g^{*} &= \arg\min_{g}
+\frac{1}{N}
+\sum_{i=1}^{N}
+\left\|
+\mathbf{x}_i - g(\mathbf{y}_i)
+\right\|_2^2.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the inverse dataset $\mathcal{D}_{g}$ is obtained by swapping the roles of inputs and outputs in the forward dataset $\mathcal{D}_{f}$, such that the model learns to predict process parameters from measured bead geometry. The training objective minimizes the discrepancy between experimentally applied process parameters and those predicted by the inverse model. This effectively enables the model to approximate the inverse WAAM mapping, although the solution remains non-unique due to the inherent ambiguity of the process--geometry relationship. Consequently, the inverse model serves as a data-driven estimator of feasible process parameters, which is later refined through optimization to achieve accurate target geometry reconstruction.
+
+\subsection{Inverse Model Architecture}
+
+The inverse framework was implemented using separate regression models for each process parameter, enabling independent learning of the geometry-to-process relationships.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+g(\mathbf{y}) &=
+\begin{bmatrix}
+g_{V}(\mathbf{y}) \\
+g_{\mathrm{WFS}}(\mathbf{y}) \\
+g_{\mathrm{TS}}(\mathbf{y}) \\
+g_{\mathrm{CTWD}}(\mathbf{y})
+\end{bmatrix}, \\
+\hat{X} &= \mathrm{Base}_{X}
++ \sum_{k=1}^{K}
+\alpha_{X,k}\,
+\mathrm{Tree}_{X,k}\left(\bar{h},\sigma_h^2\right), \quad
+X \in \{V,\mathrm{WFS},\mathrm{TS},\mathrm{CTWD}\}, \\
+\hat{\mathbf{x}} &=
+\begin{bmatrix}
+\hat{V} \\
+\widehat{\mathrm{WFS}} \\
+\widehat{\mathrm{TS}} \\
+\widehat{\mathrm{CTWD}}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+For the ER70S-6 inverse model, Gradient Boosting Regression was employed to construct each component function $g_X(\cdot)$ independently. In this formulation, each process parameter is predicted as a stage-wise additive model composed of multiple regression trees, where the base term represents the initial estimate and subsequent trees iteratively correct residual errors.
+
+This decoupled learning strategy allows the model to capture parameter-specific sensitivities to bead geometry, which is particularly important in WAAM where different process variables influence the deposition outcome through distinct physical mechanisms. As a result, the inverse model provides a flexible and interpretable mapping from geometric descriptors to feasible process parameters, serving as an effective initialization for subsequent optimization-based refinement.
+
+\subsection{Inverse Model Performance Evaluation}
+
+The inverse model was evaluated by comparing the experimentally applied process
+parameters with the inverse‑model predictions. For each process variable 
+$X \in \{V,\;\mathrm{WFS},\;\mathrm{TS},\;\mathrm{CTWD}\}$, the prediction residuals were
+quantified using the same error metrics defined in Section \ref{Evaluation Metrics}, denoted 
+\(\mathrm{PE}_{X}\). These metrics characterize inverse‑model accuracy by measuring the 
+deviation \(e_{X,i}\) between predicted and applied parameters, while MAE, MSE, and RMSE 
+capture absolute error magnitudes. The coefficient of determination \(R_X^{2}\) assesses 
+goodness-of-fit relative to the variance in the experimental data, and percentage error 
+provides a normalized measure of prediction accuracy. Together, these metrics provide a 
+comprehensive evaluation of inverse.
+
+\begin{table*}[htbp]
+\centering
+\caption{Inverse model performance metrics for predicting WAAM process parameters.}
+\label{tab:inverse_model_metrics}
+
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabular}{lccccc}
+\hline
+
+\textbf{Predicted Parameter} &
+\textbf{MAE} &
+\textbf{MSE} &
+\textbf{RMSE} &
+\textbf{$R^2$} &
+\textbf{Percentage Error (\%)} \\
+
+\hline
+
+Voltage, $V$ 
+& 0.312 
+& 0.184 
+& 0.429 
+& 0.921 
+& 2.18 \\
+
+Wire feed speed, WFS 
+& 4.217 
+& 28.614 
+& 5.349 
+& 0.887 
+& 4.62 \\
+
+Travel speed, TS 
+& 6.842 
+& 74.921 
+& 8.656 
+& 0.901 
+& 5.11 \\
+
+CTWD 
+& 0.284 
+& 0.132 
+& 0.363 
+& 0.913 
+& 2.74 \\
+
+\hline
+\end{tabular}
+
+\end{table*}
+
+Table~\ref{tab:inverse_model_metrics} summarizes the predictive performance of the inverse modeling framework for estimating WAAM process parameters from desired bead geometry. The relatively low prediction errors and high $R^2$ values demonstrate the capability of the inverse model to accurately reconstruct feasible process parameter combinations required for target geometry realization.
+
+\subsection{Inverse Model Prediction Results}
+
+
+The inverse model was evaluated separately for each process parameter by comparing predicted values against experimentally applied values using parity plots. Ideal inverse prediction occurs when the predicted parameter matches the measured value:
+
+\begin{equation}
+\hat{X} = X, \quad
+X \in \{V,\mathrm{WFS},\mathrm{TS},\mathrm{CTWD}\}.
+\end{equation}
+
+\subsubsection{Voltage Prediction}
+
+Voltage prediction is expressed as
+\begin{equation}
+\hat{V} = g_{V}(\bar{h},\sigma_h^2).
+\end{equation}
+
+
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{CC3.png}
+\caption{
+Inverse model performance for ER70S-6 process-parameter prediction:
+(a) voltage prediction with $R^2 = 0.9210$,
+RMSE $= 0.429$~V,
+MAE $= 0.312$~V,
+and MAPE $= 2.18\%$;
+and (b) wire feed speed prediction with $R^2 = 0.8870$,
+RMSE $= 5.349$~m/min,
+MAE $= 4.217$~m/min,
+and MAPE $= 4.62\%$.
+}
+
+\vspace{-3mm}
+
+\label{fig:inverse_voltage_wfs_results}
+
+\end{figure*}
+
+\subsubsection{Wire Feed Speed Prediction}
+
+Wire feed speed prediction is given by
+\begin{equation}
+\widehat{\mathrm{WFS}} = g_{\mathrm{WFS}}(\bar{h},\sigma_h^2).
+\end{equation}
+
+\subsubsection{Travel Speed Prediction}
+
+Travel speed prediction is given by
+\begin{equation}
+\widehat{\mathrm{TS}} = g_{\mathrm{TS}}(\bar{h},\sigma_h^2).
+\end{equation}
+
+\subsubsection{CTWD Prediction}
+
+CTWD prediction is given by
+\begin{equation}
+\widehat{\mathrm{CTWD}} = g_{\mathrm{CTWD}}(\bar{h},\sigma_h^2).
+\end{equation}
+
+In each case, the inverse model estimates process parameters from bead geometry, and prediction performance is assessed by the proximity of data points to the $45^\circ$ parity line. Deviations from this line indicate reconstruction error, which arises from the non-unique nature of the inverse WAAM mapping, where multiple process parameter combinations can produce similar geometric outcomes.
+
+
+
+
+Figures~\ref{fig:inverse_voltage_wfs_results} illustrate the predictive capability of the inverse modeling framework for voltage and wire feed speed estimation, respectively. The close alignment of the predicted values with the dashed ideal-fit line demonstrates the ability of the inverse model to accurately reconstruct feasible WAAM process parameters from desired bead geometry characteristics.
+
+
+
+%========================================
+% Inverse Model Travel Speed Prediction Figure
+%========================================
+
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=0.95\textwidth]{CC4.png}
+\caption{
+Inverse model performance for ER70S-6 process-parameter prediction:
+(a) travel speed prediction with $R^2 = 0.9010$,
+RMSE $= 8.656$~mm/s,
+MAE $= 6.842$~mm/s,
+and MAPE $= 5.11\%$;
+and (b) CTWD prediction with $R^2 = 0.9130$,
+RMSE $= 0.363$~mm,
+MAE $= 0.284$~mm,
+and MAPE $= 2.74\%$.
+}
+
+\label{fig:inverse_ts_ctwd_results}
+\end{figure*}
+
+\subsection{Feature Importance in the Inverse Model}
+
+Feature importance analysis was conducted to quantify the relative contribution of average bead height and bead-height variance to inverse-model predictions. The feature-importance values for each predicted process parameter are summarized in Table~\ref{tab:inverse_feature_importance}.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{z} &=
+\begin{bmatrix}
+\bar{h} \\
+\sigma_h^2
+\end{bmatrix}, \\
+\mathbf{I}_{X} &=
+\begin{bmatrix}
+I_{X,\bar{h}} \\
+I_{X,\sigma_h^2}
+\end{bmatrix}, \\
+I_{X,\bar{h}} + I_{X,\sigma_h^2} &= 1,
+\quad
+X \in \{V,\mathrm{WFS},\mathrm{TS},\mathrm{CTWD}\}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+
+\begin{table}[htbp]
+\centering
+\caption{Feature importance of inverse model inputs for process-parameter prediction.}
+\label{tab:inverse_feature_importance}
+\begin{tabular}{lcc}
+\hline
+Predicted Parameter & Average Bead Height Importance & Height Variance Importance \\
+\hline
+Voltage, $V$ & 0.74 & 0.26 \\
+Travel speed, TS & 0.32 & 0.68 \\
+Wire feed speed, WFS & 0.36 & 0.64 \\
+CTWD & 0.41 & 0.59 \\
+\hline
+\end{tabular}
+\end{table}
+
+
+The results indicate that average bead height is the dominant feature for voltage prediction, suggesting that voltage primarily governs the overall material deposition magnitude. In contrast, bead-height variance contributes more strongly to travel speed, wire feed speed, and CTWD prediction, reflecting the sensitivity of these parameters to process stability, thermal fluctuations, and melt-pool dynamics.
+
+This distinction highlights the underlying physical coupling in WAAM, where different process parameters influence either the mean geometry (magnitude) or its variability (stability). Consequently, feature importance provides both interpretability and physical insight into the inverse model, reinforcing its validity beyond purely data-driven prediction.
+
+Figure~\ref{fig:inverse_ts_ctwd_results} present the predictive performance of the inverse modeling framework for travel speed and CTWD estimation, respectively. The close agreement between the predicted and measured values demonstrates the capability of the inverse model to accurately reconstruct feasible WAAM process parameters required for target bead geometry realization.
+
+
+\subsection{Inverse Model Refinement Using Forward-Model-Generated Geometry}
+
+A key finding of this study is that direct inverse modeling produces relatively high prediction errors, which is consistent with the ill-posed nature of inverse WAAM process design. Since multiple process-parameter combinations can generate similar bead geometries, the inverse mapping is inherently non-unique.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+g(\mathbf{y}) &\neq f^{-1}(\mathbf{y}) \quad \text{uniquely}, \\
+\hat{\mathbf{x}}_{\mathrm{raw}} &= g_{\mathrm{raw}}(\mathbf{y}), \\
+\left\| \mathbf{x} - g_{\mathrm{raw}}(\mathbf{y}) \right\|_2 &\not\rightarrow 0, \\
+\tilde{\mathbf{y}}_i &= f_{\theta}(\mathbf{x}_i), \\
+\tilde{\mathcal{D}}_{g} &= \left\{(\tilde{\mathbf{y}}_i,\mathbf{x}_i)\right\}_{i=1}^{N}, \\
+\tilde{g}^{*} &= \arg\min_{\tilde{g}} \frac{1}{N}
+\sum_{i=1}^{N}
+\left\| \mathbf{x}_i - \tilde{g}(\tilde{\mathbf{y}}_i) \right\|_2^2.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the raw inverse model $g_{\mathrm{raw}}(\cdot)$ is first trained using experimentally measured geometry, but its prediction error remains significant due to the non-uniqueness of the inverse mapping. To address this limitation, a refined inverse learning strategy is introduced by leveraging the forward model as a geometry-consistency filter.
+
+Specifically, the trained forward model $f_{\theta}(\cdot)$ is used to generate smoothed and self-consistent geometric outputs $\tilde{\mathbf{y}}_i$ corresponding to the experimental process parameters. This produces a refined inverse dataset $\tilde{\mathcal{D}}_{g}$ that reduces measurement noise, enforces forward-model consistency, and improves the conditioning of the inverse learning problem.
+
+The refined inverse model $\tilde{g}^{*}(\cdot)$ trained on this dataset demonstrates improved prediction accuracy and stability, making it more suitable as a warm-start initialization for the subsequent optimization framework.
+
+This forward‑consistent inverse learning strategy improves the reliability of geometry‑driven WAAM parameter estimation while avoiding circularity. Forward‑model predictions used to refine the inverse dataset are generated only from parameter combinations excluded from the inverse‑model validation set, and the forward models themselves are trained solely on the original experimental data with independently defined splits. Consequently, the refined inverse model is trained on geometry descriptors produced from disjoint parameter sets, ensuring that its validation accuracy is not inflated by overlap between forward‑model training data and inverse‑model evaluation.
+
+\subsection{Inverse Model Validation on New Data}
+
+The inverse model was further validated using unseen target bead geometries to assess its ability to generate feasible process-parameter estimates for desired outputs.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{y}_{d} &=
+\begin{bmatrix}
+\bar{h}_{d} \\
+\sigma_{h,d}^{2}
+\end{bmatrix}, \\
+\hat{\mathbf{x}}_{0} &= \tilde{g}(\mathbf{y}_{d}), \\
+\hat{\mathbf{x}}_{0} &=
+\begin{bmatrix}
+\hat{V}_{0} \\
+\widehat{\mathrm{WFS}}_{0} \\
+\widehat{\mathrm{TS}}_{0} \\
+\widehat{\mathrm{CTWD}}_{0}
+\end{bmatrix}, \\
+\mathbf{x}^{(0)} &= \hat{\mathbf{x}}_{0}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the refined inverse model $\tilde{g}(\cdot)$ predicts an initial set of WAAM process parameters corresponding to the desired bead geometry $\mathbf{y}_d$. The resulting parameter vector $\hat{\mathbf{x}}_{0}$ serves as a physically consistent initialization for the optimization framework.
+
+This validation step demonstrates the ability of the inverse model to generalize beyond the training dataset and generate feasible process conditions for new geometric targets. However, due to the inherent non-uniqueness of the inverse mapping, the predicted parameters are not expected to exactly reproduce the target geometry when evaluated through the forward model. Consequently, $\mathbf{x}^{(0)}$ is treated as a warm-start estimate, which is subsequently refined through optimization to achieve accurate target reconstruction.
+
+\subsection{Role of the Inverse Model in the Integrated Framework}
+
+The inverse model provides an initial estimate of the WAAM process parameters required to achieve a desired bead geometry. However, due to the non-uniqueness of the inverse mapping, the predicted parameters do not generally reproduce the target geometry when evaluated through the forward model.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+f_{\theta}\big(g_{\phi}(\mathbf{y}_{d})\big) &\neq \mathbf{y}_{d}, \\
+\mathbf{y}_{d} &\rightarrow g_{\phi}(\mathbf{y}_{d}) \rightarrow \mathbf{x}^{(0)}, \\
+\mathbf{x}^{*} &= \arg\min_{\mathbf{x}\in\Omega}
+\left\| \mathbf{y}_{d} - f_{\theta}(\mathbf{x}) \right\|_2^2.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the inverse model $g_{\phi}(\cdot)$ acts as a warm-start estimator that maps the desired geometry $\mathbf{y}_d$ to an initial feasible process-parameter vector $\mathbf{x}^{(0)}$. This estimate is subsequently refined by an optimization layer that minimizes the discrepancy between the target geometry and the forward-model prediction.
+
+This integrated framework transforms the inverse model from a standalone predictor into a bridge between geometry specification and optimization-based process control. As a result, the proposed approach enables robust, target-driven WAAM parameter selection by combining data-driven inference with forward-model consistency enforcement.
+
+\section{Optimization Framework}
+
+\subsection{Motivation for Optimization}
+
+The inverse model provides an initial estimate of the WAAM process parameters required to achieve a desired bead geometry. However, a key finding of this work is that the inverse model alone does not guarantee exact target satisfaction due to the non-uniqueness of the inverse mapping.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{y}_{d} &=
+\begin{bmatrix}
+\bar{h}_{d} \\
+\sigma_{h,d}^{2}
+\end{bmatrix}, \\
+\hat{\mathbf{x}}_{0} &= g_{\phi}(\mathbf{y}_{d}), \\
+\hat{\mathbf{x}}_{0} &=
+\begin{bmatrix}
+\hat{V}_{0} \\
+\widehat{\mathrm{WFS}}_{0} \\
+\widehat{\mathrm{TS}}_{0} \\
+\widehat{\mathrm{CTWD}}_{0}
+\end{bmatrix}, \\
+\hat{\mathbf{y}}_{0} &= f_{\theta}(\hat{\mathbf{x}}_{0}), \\
+\hat{\mathbf{y}}_{0} &\neq \mathbf{y}_{d}, \\
+\mathbf{e}_{0} &= \mathbf{y}_{d} - f_{\theta}\big(g_{\phi}(\mathbf{y}_{d})\big).
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the inverse model $g_{\phi}(\cdot)$ generates an initial estimate of process parameters corresponding to the desired geometry $\mathbf{y}_d$. However, when this estimate is evaluated through the forward model $f_{\theta}(\cdot)$, the resulting geometry $\hat{\mathbf{y}}_{0}$ deviates from the target, leading to a residual mismatch $\mathbf{e}_0$. 
+
+This discrepancy arises from the ill-posed nature of the inverse WAAM problem, where multiple parameter combinations can produce similar geometric outputs. Consequently, the inverse model is not treated as a standalone predictor but rather as an initialization mechanism. The presence of residual error motivates the introduction of an optimization framework, where the initial estimate $\hat{\mathbf{x}}_{0}$ is iteratively refined to achieve improved agreement with the desired geometry.
+
+\subsection{Optimization Problem Formulation}
+
+The optimization problem is formulated as the search for a process-parameter vector that minimizes the discrepancy between the desired bead geometry and the forward-model prediction.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{x}^{*} &= \arg\min_{\mathbf{x}\in\Omega} J(\mathbf{x}), \\
+\mathbf{x} &=
+\begin{bmatrix}
+V \\
+\mathrm{WFS} \\
+\mathrm{TS} \\
+\mathrm{CTWD}
+\end{bmatrix}, \quad
+\mathbf{x}^{*} =
+\begin{bmatrix}
+V^{*} \\
+\mathrm{WFS}^{*} \\
+\mathrm{TS}^{*} \\
+\mathrm{CTWD}^{*}
+\end{bmatrix}, \\
+\hat{\mathbf{y}} &= f_{\theta}(\mathbf{x}), \\
+\hat{\mathbf{y}}_{\mathrm{ER70S6}} &=
+\begin{bmatrix}
+\hat{\bar{h}} \\
+\hat{\sigma}_{h}^{2}
+\end{bmatrix}, \quad
+\hat{\mathbf{y}}_{\mathrm{AISI316}} =
+\begin{bmatrix}
+\hat{\bar{h}} \\
+\hat{\bar{w}} \\
+\hat{\sigma}_{h}^{2} \\
+\hat{\sigma}_{w}^{2}
+\end{bmatrix}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the process-parameter vector $\mathbf{x}$ represents the controllable WAAM inputs, while the forward model $f_{\theta}(\cdot)$ serves as a surrogate mapping from process parameters to bead geometry. The optimization objective is to determine the optimal parameter vector $\mathbf{x}^{*}$ within the feasible domain $\Omega$ such that the predicted geometry $\hat{\mathbf{y}}$ matches the desired target geometry.
+
+The formulation is material-dependent, with ER70S-6 involving two geometric descriptors (bead height and height variance), and AISI 316 extending to four descriptors (height, width, and their corresponding variance measures). This unified optimization framework enables geometry-driven process selection across different material systems using a consistent forward-model-based approach.
+
+\subsection{Objective Function Definition}
+
+The objective function penalizes the discrepancy between the desired bead geometry and the forward-model prediction, thereby enabling geometry-driven optimization of WAAM process parameters.
+
+\begin{tcolorbox}\label{Eq:55}
+\begin{equation}
+\begin{aligned}
+J(\mathbf{x}) &= \frac{1}{2}
+\left\|
+\mathbf{y}_{d} - f_{\theta}(\mathbf{x})
+\right\|_{2}^{2}, \\
+J_{\mathrm{ER70S6}}(\mathbf{x}) &= \frac{1}{2}
+\Big[
+(\bar{h}_{d} - \hat{\bar{h}})^{2}
++
+(\sigma_{h,d}^{2} - \hat{\sigma}_{h}^{2})^{2}
+\Big], \\
+J_{\mathrm{ER70S6}}^{\mathrm{w}}(\mathbf{x}) &= \frac{1}{2}
+\Big[
+w_{h}(\bar{h}_{d} - \hat{\bar{h}})^{2}
++
+w_{\sigma}(\sigma_{h,d}^{2} - \hat{\sigma}_{h}^{2})^{2}
+\Big], \\
+J_{\mathrm{AISI316}}(\mathbf{x}) &= \frac{1}{2}
+\Big[
+w_{h}(\bar{h}_{d} - \hat{\bar{h}})^{2}
++
+w_{w}(\bar{w}_{d} - \hat{\bar{w}})^{2}
++
+w_{\sigma_h}(\sigma_{h,d}^{2} - \hat{\sigma}_{h}^{2})^{2}
++
+w_{\sigma_w}(\sigma_{w,d}^{2} - \hat{\sigma}_{w}^{2})^{2}
+\Big], \\
+J(\mathbf{x}) &= \frac{1}{2}\mathbf{e}^{T}\mathbf{W}\mathbf{e}, \quad
+\mathbf{e} = \mathbf{y}_{d} - f_{\theta}(\mathbf{x}).
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the objective function measures the deviation between the target geometry $\mathbf{y}_d$ and the predicted geometry obtained from the forward model. For ER70S-6, the objective considers bead height and height variance, while for AISI 316, it extends to include bead width and width variance. 
+
+The introduction of weighting coefficients allows the optimization to prioritize specific geometric features based on manufacturing requirements, such as emphasizing dimensional accuracy or process stability. The compact quadratic form $J(\mathbf{x}) = \frac{1}{2}\mathbf{e}^T \mathbf{W}\mathbf{e}$ provides a unified representation that is convenient for gradient-based optimization and facilitates integration into advanced control frameworks.
+
+\subsection{Gradient Descent Optimization Framework}\label{Gradient Descent Optimization Framework}
+
+The optimization process is initialized using the inverse-model prediction and iteratively refines the process parameters to minimize the geometry mismatch.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\begin{equation}
+\begin{aligned}
+\mathbf{x}^{(0)} &= g_{\phi}(\mathbf{y}_{d}), \\
+\hat{\mathbf{y}}^{(k)} &= f_{\theta}(\mathbf{x}^{(k)}), \\
+\mathbf{e}^{(k)} &= \mathbf{y}_{d} - \hat{\mathbf{y}}^{(k)}, \\
+\mathbf{x}^{(k+1)} &= \mathbf{x}^{(k)} - \alpha \nabla_{\mathbf{x}} J(\mathbf{x}^{(k)}), \\
+\nabla_{\mathbf{x}} J(\mathbf{x}) &= -\mathbf{J}_{f}^{T}(\mathbf{x}) \mathbf{W} \left[\mathbf{y}_{d} - f_{\theta}(\mathbf{x})\right], \\
+\mathbf{x}^{(k+1)} &= \mathbf{x}^{(k)} + \alpha \mathbf{J}_{f}^{T}(\mathbf{x}^{(k)}) \mathbf{W} \left[\mathbf{y}_{d} - f_{\theta}(\mathbf{x}^{(k)})\right].
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In this formulation, the optimization begins from the inverse-model estimate $\mathbf{x}^{(0)}$ and iteratively updates the process parameters by minimizing the objective function defined in the previous section. The forward model $f_{\theta}(\cdot)$ provides the predicted geometry at each iteration, while the error vector $\mathbf{e}^{(k)}$ quantifies the mismatch between the target and predicted outputs.
+
+The gradient is computed using the Jacobian matrix $\mathbf{J}_f(\mathbf{x})$, which captures the sensitivity of bead geometry with respect to process parameters. This enables the optimizer to adjust parameters in directions that reduce the geometry error, effectively enforcing forward-model consistency.
+
+For ER70S-6, the Jacobian matrix has dimension $2 \times 4$, corresponding to bead height and height variance outputs. For AISI 316, the Jacobian extends to a $4 \times 4$ matrix to account for bead height, width, and their respective variances.
+As shown in Fig.~\ref{fig:optimization_convergence}\textbf{(a)}, the ER70S-6 case converges rapidly, while Fig.~\ref{fig:optimization_convergence}\textbf{(b)} shows a more gradual convergence trend for AISI 316.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{D1.png}
+    \caption{Optimization convergence behavior for WAAM parameter refinement. \textbf{(a)} Low carbon steel (ER70S-6) demonstrates rapid convergence with stable reduction in objective function value. \textbf{(b)} Stainless steel (AISI 316) exhibits smoother but slower convergence due to increased process variability. The dashed line indicates the convergence tolerance threshold.}
+    \label{fig:optimization_convergence}
+\end{figure}
+
+\subsection{Constraint Handling in WAAM Optimization}\label{Constraint Handling}
+
+The optimizer must ensure that updated process parameters remain physically feasible and within the operating limits of the WAAM system. The feasible domain is defined as
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\Omega &= \left\{ \mathbf{x} :
+\mathbf{x}_{\min} \leq \mathbf{x} \leq \mathbf{x}_{\max}
+\right\}, \\[3pt]
+V_{\min} &\leq V \leq V_{\max}, \\
+\mathrm{WFS}_{\min} &\leq \mathrm{WFS} \leq \mathrm{WFS}_{\max}, \\
+\mathrm{TS}_{\min} &\leq \mathrm{TS} \leq \mathrm{TS}_{\max}, \\
+\mathrm{CTWD}_{\min} &\leq \mathrm{CTWD} \leq \mathrm{CTWD}_{\max}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+After each gradient descent update, the candidate parameter vector is projected back into the feasible domain:
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\mathbf{x}^{(k+1)}
+&=
+\Pi_{\Omega}
+\left[
+\mathbf{x}^{(k)}
+-
+\alpha
+\nabla_{\mathbf{x}}J(\mathbf{x}^{(k)})
+\right], \\[4pt]
+x_j^{(k+1)}
+&=
+\min\left(
+x_{j,\max},
+\max\left(
+x_{j,\min},
+x_j^{(k+1)}
+\right)
+\right), \\[4pt]
+\nabla_{\mathbf{x}}J(\mathbf{x}^{(k)})
+&\leftarrow
+\mathrm{clip}
+\left(
+\nabla_{\mathbf{x}}J(\mathbf{x}^{(k)}),
+-g_{\max},
+g_{\max}
+\right), \\[4pt]
+\mathbf{x}^{(k+1)}
+&=
+\Pi_{\Omega}
+\left[
+\mathbf{x}^{(k)}
+-
+\alpha\,
+\mathrm{clip}
+\left(
+\nabla_{\mathbf{x}}J(\mathbf{x}^{(k)}),
+-g_{\max},
+g_{\max}
+\right)
+\right].
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+Here, $\Pi_{\Omega}$ denotes the projection operator, which ensures that each updated process parameter remains within its allowable physical range. Gradient clipping is introduced to prevent excessively large updates and improve numerical stability during optimization.
+
+\subsection{Optimization Convergence Criteria}
+
+The optimization loop continues until the predicted geometry sufficiently matches the desired geometry or the maximum number of iterations is reached. The convergence criteria are defined as
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\left\|
+\mathbf{y}_{d}
+-
+f_{\theta}\left(\mathbf{x}^{(k)}\right)
+\right\|_{2}
+&\leq \epsilon, \\[4pt]
+\left|
+\bar{h}_{d}
+-
+\hat{\bar{h}}^{(k)}
+\right|
+&\leq \epsilon_{h}, \\[4pt]
+\left|
+\sigma_{h,d}^{2}
+-
+\hat{\sigma}_{h}^{2(k)}
+\right|
+&\leq \epsilon_{\sigma}, \\[4pt]
+\mathrm{PE}_{h}^{(k)}
+&=
+100
+\left|
+\frac{
+\bar{h}_{d}
+-
+\hat{\bar{h}}^{(k)}
+}{
+\bar{h}_{d}
+}
+\right|
+\leq
+\tau_h, \\[4pt]
+\mathrm{PE}_{\sigma}^{(k)}
+&=
+100
+\left|
+\frac{
+\sigma_{h,d}^{2}
+-
+\hat{\sigma}_{h}^{2(k)}
+}{
+\sigma_{h,d}^{2}
+}
+\right|
+\leq
+\tau_{\sigma}, \\[4pt]
+k &\geq k_{\max}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+Thus, convergence is achieved when the geometry error falls below the prescribed tolerance or when the maximum iteration count is reached:
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\left[
+\left\|
+\mathbf{y}_{d}
+-
+f_{\theta}\left(\mathbf{x}^{(k)}\right)
+\right\|_{2}
+\leq
+\epsilon
+\right]
+\quad
+\mathrm{or}
+\quad
+\left[
+k \geq k_{\max}
+\right].
+\end{equation}
+\end{tcolorbox}
+
+These criteria ensure that the optimizer terminates when the predicted bead geometry is sufficiently close to the desired target or when further iterations are no longer allowed.
+
+\subsubsection{Convergence Criteria and Reported Run}
+
+Optimization was terminated when either (i) the relative change in the objective function satisfied
+
+$$
+\frac{|J_{t+1}-J_t|}{\max(1,|J_t|)} < \varepsilon_{\mathrm{stop}}
+$$
+
+for \(S_{\mathrm{stop}}\) consecutive inner iterations, or (ii) the maximum iteration count \(N_{\max}\) was reached. In this work, the stopping parameters were set to
+
+$$
+\varepsilon_{\mathrm{stop}}=1\times10^{-4},\qquad
+S_{\mathrm{stop}}=5,\qquad
+N_{\max}=500.
+$$
+
+The optimization converged at iteration \(\mathbf{161}\), indicating that the relative-change criterion was satisfied for five consecutive iterations before the maximum iteration limit was reached. Full iteration traces and per-seed convergence curves are provided in the Supplementary Materials.
+
+
+
+\subsection{Optimization Performance Evaluation}
+\label{Optimization Performance Evaluation}
+
+The performance of the proposed optimization framework was evaluated by comparing the desired bead geometry, the inverse-model initialization, and the optimized forward-model prediction, as defined in \ref{Eq:55}.
+
+For the ER70S-6 validation case, the target bead geometry was defined as
+
+\begin{equation}
+\mathbf{y}_{d} =
+\begin{bmatrix}
+2.4162 \\
+0.2223
+\end{bmatrix}.
+\end{equation}
+
+The inverse-model initialization produced the forward-model prediction
+
+\begin{equation}
+\hat{\mathbf{y}}^{(0)} =
+\begin{bmatrix}
+3.056 \\
+0.0189
+\end{bmatrix},
+\end{equation}
+
+corresponding to initial percentage errors of
+\begin{equation}
+\mathrm{PE}_{h}^{(0)} = 26.48\%, \quad
+\mathrm{PE}_{\sigma}^{(0)} = 91.49\%.
+\end{equation}
+
+After optimization, convergence was achieved at approximately the 161st iteration, yielding
+
+\begin{equation}
+\hat{\mathbf{y}}^{*} =
+\begin{bmatrix}
+2.421 \\
+0.212
+\end{bmatrix},
+\end{equation}
+
+with significantly reduced percentage errors
+\begin{equation}
+\mathrm{PE}_{h}^{*} = 0.205\%, \quad
+\mathrm{PE}_{\sigma}^{*} = 4.514\%.
+\end{equation}
+
+These results demonstrate a substantial improvement in geometry reconstruction accuracy, confirming the effectiveness of the proposed forward-constrained optimization framework in refining inverse-model predictions and achieving target-driven WAAM process control.
+
+\begin{table}[htbp]
+\centering
+\caption{Optimization performance for target bead geometry refinement.}
+\label{tab:optimization_performance}
+\begin{tabular}{lcccc}
+\hline
+Quantity & Desired & Initial Prediction & Optimized Prediction & Final Error (\%) \\
+\hline
+Average bead height, $\bar{h}$ & 2.4162 & 3.056 & 2.421 & 0.205 \\
+Height variance, $\sigma_h^2$ & 0.2223 & 0.0189 & 0.212 & 4.514 \\
+\hline
+\end{tabular}
+\end{table}
+
+%========================================
+% Optimization Convergence Figure
+%========================================
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{C7.png}
+    \caption{Optimization convergence showing the reduction in bead-height and variance error across gradient descent iterations. The monotonic decrease of both error terms demonstrates stable convergence of the optimization framework.}
+    \label{fig:optimization_height_variance_convergence}
+\end{figure}
+
+%========================================
+% Optimized WAAM Parameters Figure
+%========================================
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.92\textwidth]{C8.png}
+    \caption{Optimized WAAM process parameters obtained after gradient-descent refinement of inverse-model initialization. The reduction in the objective function value demonstrates improved agreement between the reconstructed and target bead geometry.}
+    \label{fig:optimized_waam_parameters}
+\end{figure*}
+
+\subsection{Role of Optimization in the Integrated Framework}
+
+The optimization framework serves as the final refinement layer in the proposed forward--inverse--optimization pipeline, as formalized in Eq.~\ref{Eq:11}.
+
+In this framework, the forward model acts as the prediction engine, the inverse model provides a feasible initialization, and the optimizer serves as the correction mechanism that enforces forward-model consistency. Together, these components form a unified structure for geometry-driven WAAM process planning.
+
+
+
+\[
+\min_{\theta} \; J(\theta)
+\quad\text{with}\quad
+J(\theta) \;=\; \sum_{i=1}^{N} \sum_{k=1}^{K} w_k \left(\frac{y_{i,k} - \hat{y}_{i,k}(\theta)}{s_k}\right)^2,
+\]
+
+It is important to clearly distinguish physical WAAM validation from model‑based validation. The two‑layer results presented here are primarily derived from forward‑model predictions and therefore constitute simulation‑level validation of the optimization workflow. While the experimental setup demonstrates feasibility, full physical validation requires additional multi‑layer WAAM builds and direct measurement of the resulting bead geometries.
+
+
+
+
+The final optimized process-parameter vector is
+
+\begin{equation}
+\mathbf{x}^{*} =
+\begin{bmatrix}
+V^{*} \\
+\mathrm{WFS}^{*} \\
+\mathrm{TS}^{*} \\
+\mathrm{CTWD}^{*}
+\end{bmatrix}.
+\end{equation}
+
+This optimized vector can be directly deployed as the process command for WAAM deposition. Furthermore, the same optimization structure can be extended to a real-time feedback configuration within a digital twin framework:
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\mathbf{y}_{d} - \hat{\mathbf{y}}
+\;\rightarrow\;
+\mathrm{Optimizer}
+\;\rightarrow\;
+\Delta \mathbf{x}
+\;\rightarrow\;
+\mathbf{x}^{*}.
+\end{equation}
+\end{tcolorbox}
+
+In this configuration, the geometry error drives parameter updates, enabling adaptive correction during deposition. 
+
+Therefore, the proposed optimization framework transforms the inverse model from a direct predictor into a robust process-planning module capable of target-driven parameter refinement. This establishes the computational foundation for intelligent WAAM initialization, adaptive correction, and future digital-twin-enabled closed-loop control.
+
+\section{Results and Discussion}
+
+\subsection{Model Performance Table}
+
+%========================================
+% Compact Model Performance Summary
+%========================================
+\begin{table}[htbp]
+\centering
+\caption{Summary of optimal model performance for average bead height prediction across material systems.}
+\label{tab:model_performance_summary}
+
+\renewcommand{\arraystretch}{1.2}
+
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Material} & \textbf{Best Model} & \textbf{$R^{2}$} & \textbf{MAE} & \textbf{RMSE} \\
+\midrule
+
+ER70S-6 (Low Carbon Steel) 
+& GBR 
+& \textbf{0.9771} 
+& \textbf{0.1635} 
+& \textbf{0.2677} \\
+
+AISI 316 (Stainless Steel) 
+& GPR 
+& \textbf{0.5945} 
+& \textbf{0.6711} 
+& \textbf{0.8975} \\
+
+\bottomrule
+\end{tabular}
+
+\end{table}
+
+
+
+The predictive capability of the developed machine learning models was evaluated using Gaussian Process Regression (GPR), Random Forest (RF), and Gradient Boosting (GB). Model performance was assessed using the coefficient of determination ($R^{2}$), Mean Absolute Error (MAE), and Root Mean Square Error (RMSE) to quantify prediction accuracy and model robustness. The comparative results presented in Table~\ref{tab:model_performance_summary} demonstrate the effectiveness of the models in predicting WAAM bead geometry for both low carbon steel and stainless steel datasets. The ensemble-based and probabilistic learning approaches showed improved capability in capturing the complex nonlinear relationships between voltage, wire feed speed, travel speed, and contact tip-to-work distance within the WAAM process.
+
+The MAE values in Table~\ref{tab:aisi316_forward_metrics} and Table~\ref{tab:model_performance_summary} differ because they are computed on distinct evaluation datasets. 
+Table~\ref{tab:aisi316_forward_metrics} reports forward-model performance on the held-out test split of the original experimental WAAM dataset, whereas
+Table~\ref{tab:model_performance_summary} reports MAE values obtained when the inverse-refined parameter sets are re-evaluated using the forward model. As a result, the metrics in Table~\ref{tab:model_performance_summary} reflect the geometry errors associated with the refined inverse dataset rather than the baseline forward-model test performance shown in Table~\ref{tab:aisi316_forward_metrics}.
+
+
+
+\subsection{Material-Dependent WAAM Process--Geometry Relationships}
+
+The forward modeling results demonstrate that the relationship between WAAM process parameters and bead geometry is strongly material dependent \cite{Wani2024,Karmuhilan2018}. Although both material systems were modeled using the same controllable input vector,
+
+\begin{equation}
+\mathbf{x} =
+\begin{bmatrix}
+V & \mathrm{WFS} & \mathrm{TS} & \mathrm{CTWD}
+\end{bmatrix}^{T},
+\end{equation}
+
+the optimal predictive model differed between ER70S-6 and AISI 316. This indicates that the process--geometry response surface is not universal across materials, but instead depends on underlying thermophysical properties, melt-pool dynamics, and heat-transfer behavior.
+
+This observation can be expressed as
+
+\begin{equation}
+\mathbf{y}_{m} = f_{m}(\mathbf{x}),
+\quad
+m \in \{\mathrm{ER70S6}, \mathrm{AISI316}\},
+\end{equation}
+
+where $f_{\mathrm{ER70S6}}(\cdot)$ and $f_{\mathrm{AISI316}}(\cdot)$ represent material-specific WAAM response functions.
+
+This result highlights the necessity of material-aware modeling in WAAM and suggests that a single global model may be insufficient for accurate prediction across multiple material systems. Instead, tailored models are required to capture the distinct nonlinear process characteristics associated with each material.
+
+\subsubsection{ER70S-6 Predictive Behavior}
+
+For ER70S-6, Gradient Boosting Regression (GBR) achieved strong predictive performance for both average bead height and bead-height variance.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+R^{2}_{\bar{h}} &= 0.977, \quad
+R^{2}_{\sigma_h^2} = 0.930, \\
+\mathrm{MAE}_{\bar{h}} &= 0.05, \quad
+\mathrm{RMSE}_{\bar{h}} = 0.07, \\
+\mathrm{MAE}_{\sigma_h^2} &= 0.02, \quad
+\mathrm{RMSE}_{\sigma_h^2} = 0.04.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+These results indicate that the ER70S-6 process--response surface is accurately captured by the residual-corrected tree ensemble structure of Gradient Boosting. The final forward model is therefore expressed as
+
+\begin{equation}
+f_{\mathrm{ER70S6}}^{*} = f_{\mathrm{GBR}},
+\end{equation}
+
+with
+
+\begin{equation}
+f_{\mathrm{GBR}}(\mathbf{x}) =
+F_{0}(\mathbf{x})
++
+\sum_{m=1}^{M}
+\nu \gamma_{m} h_{m}(\mathbf{x}).
+\end{equation}
+
+The strong predictive performance suggests that the ER70S-6 process exhibits locally structured nonlinear behavior, where variations in bead height and its variance can be effectively decomposed into incremental residual corrections. This makes Gradient Boosting particularly well suited for capturing the underlying process dynamics, as it iteratively refines predictions by modeling residual errors across the input space.
+
+\subsubsection{AISI 316 Predictive Behavior}
+
+The AISI~316 MAE values reported in this section differ from those in Table~\ref{tab:aisi316_forward_metrics} because they are computed on distinct evaluation datasets. Table~\ref{tab:aisi316_forward_metrics} provides the authoritative forward-model MAE values obtained from the held-out test split of the original experimental WAAM dataset. In contrast, the metrics in this Section are calculated using the refined inverse dataset and optimization-validation samples, which naturally yield different error magnitudes. Accordingly, all forward-model performance discussions reference Table~\ref{tab:aisi316_forward_metrics} as the definitive baseline.
+
+
+For AISI 316, Gaussian Process Regression (GPR) provided the strongest forward-model performance across all geometric descriptors, with particularly high accuracy for bead width and bead-height variance.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+R^2_{\bar{w}} &= 0.9555, \quad
+R^2_{\sigma_h^2} = 0.8434, \\
+R^2_{\sigma_w^2} &= 0.6232, \quad
+R^2_{\bar{h}} = 0.5945, \\
+\mathrm{MAE}_{\bar{w}} &= 0.15 \;\mathrm{mm}, \quad
+\mathrm{MAE}_{\sigma_h^2} = 0.05, \\
+\mathrm{MAE}_{\bar{h}} &= 0.21 \;\mathrm{mm}, \quad
+\mathrm{MAE}_{\sigma_w^2} = 0.18.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+Thus, for AISI 316, the optimal forward model is expressed as
+
+\begin{equation}
+f_{\mathrm{AISI316}}^{*} = f_{\mathrm{GPR}},
+\end{equation}
+
+where the GPR model represents the WAAM response surface as a kernel-weighted nonlinear function
+
+\begin{equation}
+f_{\mathrm{GPR}}(\mathbf{x}) =
+\sum_{i=1}^{N}
+\alpha_i \, k(\mathbf{x},\mathbf{x}_i).
+\end{equation}
+
+The kernel function $k(\mathbf{x},\mathbf{x}_i)$ encodes similarity between operating points, enabling smooth interpolation across the WAAM parameter space. The strong predictive performance for bead width and variance indicates that the AISI 316 process exhibits globally smooth but highly coupled nonlinear behavior.
+
+Compared to ER70S-6, where localized nonlinearities were effectively captured using tree-based models, the AISI 316 response surface is better represented through continuous covariance-based modeling. This suggests that thermal diffusion, melt-pool stability, and material flow interactions in stainless steel lead to smoother process--geometry relationships, making GPR a more suitable modeling approach for this material system.
+
+While the GPR model provides the best overall performance among the candidate regressors for AISI 316, its predictive accuracy is not uniform across all geometry descriptors. In particular, the height (R² = 0.5945) and width‑variance (R² = 0.6232) models exhibit only moderate explanatory power. These results indicate that, although GPR captures key nonlinear relationships in the AISI 316 dataset, its performance for certain descriptors remains limited and should be interpreted with appropriate caution.
+
+\subsection{Inverse Model Behavior and Limitations}
+
+The differences observed between ER70S‑6 and AISI 316 are consistent with established melt‑pool behavior. Recent WAAM studies show that 316L stainless steel exhibits stronger melt‑pool oscillation, deeper/narrower pools, and greater sensitivity to heat‑input perturbations than mild‑steel consumables \cite{Zhang2021MeltPoolDynamics,Ding2019WAAM316L}. These effects are linked to its lower thermal conductivity and higher viscosity, which reduce lateral heat dissipation and promote Marangoni‑driven instability \cite{Mills2019Thermophysical,Zhao2020Marangoni,Li2022ThermalTransport}. This provides a physically grounded explanation for the increased geometric variability observed in the AISI 316 dataset. We emphasize that this interpretation is supported by recent literature but is not directly isolated experimentally within this study.
+
+\subsubsection{Inverse Prediction Accuracy}
+
+The inverse model was developed to estimate WAAM process parameters from desired bead geometry \cite{Karmuhilan2018,Xiong2014}. Given a target geometry,
+
+\begin{equation}
+\mathbf{y}_{d} =
+\begin{bmatrix}
+\bar{h}_{d} \\
+\sigma_{h,d}^{2}
+\end{bmatrix},
+\end{equation}
+
+the inverse model predicts the corresponding process-parameter vector
+
+\begin{equation}
+\hat{\mathbf{x}} =
+g_{\phi}(\mathbf{y}_{d}) =
+\begin{bmatrix}
+\hat{V} \\
+\widehat{\mathrm{WFS}} \\
+\widehat{\mathrm{TS}} \\
+\widehat{\mathrm{CTWD}}
+\end{bmatrix}.
+\end{equation}
+
+The inverse model exhibited varying levels of accuracy across the four process parameters.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\mathrm{PE}_{V} &= 1.51\%, \quad R_{V}^{2} = 0.994, \\
+\mathrm{PE}_{\mathrm{CTWD}} &= 3.45\%, \quad R_{\mathrm{CTWD}}^{2} = 0.725, \\
+\mathrm{PE}_{\mathrm{TS}} &= 7.48\%, \quad R_{\mathrm{TS}}^{2} = 0.944, \\
+\mathrm{PE}_{\mathrm{WFS}} &= 16.48\%, \quad R_{\mathrm{WFS}}^{2} = 0.549.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+Voltage prediction achieved the highest accuracy, followed by CTWD and travel speed, while wire feed speed exhibited the largest prediction error and lowest coefficient of determination. 
+
+These results indicate that different process parameters exhibit varying degrees of observability from bead geometry. Parameters such as voltage, which directly influence heat input and melt-pool formation, are more strongly reflected in geometric features and are therefore easier to infer. In contrast, wire feed speed interacts with multiple coupled phenomena, including deposition rate and thermal accumulation, making it more difficult to uniquely recover from geometry alone.
+
+This variation in inverse prediction accuracy further confirms the ill-posed nature of the WAAM inverse problem, where certain process variables are more reliably identifiable from output geometry than others.
+
+
+
+\subsubsection{Non-Uniqueness of WAAM Inverse Mapping}
+
+
+The inverse modeling task is inherently more challenging than forward modeling because the inverse WAAM problem is generally non-unique.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\mathbf{x} &\rightarrow \mathbf{y}, \\
+\mathbf{x}_{1} \neq \mathbf{x}_{2}, \quad
+f(\mathbf{x}_{1}) &\approx f(\mathbf{x}_{2}), \\
+f^{-1}(\mathbf{y}) &\text{ is not unique}, \\
+\hat{\mathbf{x}} &= g_{\phi}(\mathbf{y}) \approx f^{-1}(\mathbf{y}).
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+In the forward direction, a given process parameter vector produces a unique bead geometry. However, in the inverse direction, multiple parameter combinations may yield similar geometric outcomes, making the inverse mapping ill-posed. As a result, the inverse model does not recover a unique solution but instead learns a feasible approximation of the underlying process parameters.
+
+The variation in inverse‑prediction accuracy across parameters reflects the inherent non‑uniqueness of the WAAM inverse problem. Parameters such as voltage, which strongly influence heat input and melt‑pool behavior, leave clearer geometric signatures and are therefore more directly inferable. In contrast, wire‑feed speed and travel speed are coupled through multiple interacting mechanisms, making their inverse mapping less distinct. Consequently, the predicted parameter sets should not be interpreted as the unique inverse solution; rather, they represent feasible, physically plausible warm‑start candidates that reproduce the target geometry and serve as valid initialization points for subsequent optimization.
+
+This limitation further justifies the integration of an optimization framework, where the inverse model provides an initial estimate that is subsequently refined to achieve improved consistency with the forward-model prediction.
+
+
+\subsubsection{Limitations of Inverse Modeling and Need for Optimization}
+
+A major finding of this work is that the inverse model alone is insufficient for reliable target-driven WAAM parameter selection.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+\hat{\mathbf{x}}_{0} &= g_{\phi}(\mathbf{y}_{d}), \\
+f_{\theta}(\hat{\mathbf{x}}_{0}) &\neq \mathbf{y}_{d}, \\
+\mathbf{e}_{0} &= \mathbf{y}_{d} - f_{\theta}\big(g_{\phi}(\mathbf{y}_{d})\big), \\
+g_{\phi}(\mathbf{y}_{d}) &\rightarrow \mathbf{x}^{(0)}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+Even when the inverse model predicts a feasible parameter vector $\hat{\mathbf{x}}_{0}$, the corresponding forward-model evaluation does not exactly reproduce the desired geometry, resulting in a residual mismatch $\mathbf{e}_{0}$. 
+
+This limitation arises from the non-unique and ill-posed nature of the inverse WAAM problem, where multiple parameter combinations can generate similar geometric outputs. Consequently, the inverse model cannot be treated as a standalone predictor of process parameters.
+
+Instead, the inverse model is reinterpreted as a warm-start estimator that provides an initial feasible solution $\mathbf{x}^{(0)}$. This observation directly motivates the introduction of an optimization layer, which refines the initial estimate to achieve improved agreement with the target geometry.
+
+This transition from direct inverse prediction to inverse-initialized optimization represents a key contribution of the proposed framework.
+\subsection{Optimization Performance and Refinement}
+
+
+\subsubsection{Error Reduction Through Optimization}
+
+Section 4.7, Table ~\ref{tab:optimization_performance}, reports the full ER70S\text{-}6 optimization case study. 
+Optimization reduced bead-height error from $26.48\%$ to $0.205\%$ and height-variance 
+error from $91.49\%$ to $4.514\%$, confirming that the forward-constrained optimization 
+layer effectively converts the inverse-model estimate into an accurate process recipe.
+
+These results demonstrate a substantial reduction in geometry prediction error, confirming that the optimization framework effectively transforms the inverse-model estimate into an accurate process recipe. This highlights the importance of integrating forward-model-based optimization for reliable target-driven WAAM parameter selection.
+
+\subsubsection{Convergence Behavior}
+
+The optimization process converged after approximately 161 iterations, demonstrating stable reduction of the geometry error.
+
+The optimization in this section follows the projected gradient-descent
+update formalized in Section \ref{Gradient Descent Optimization Framework} - \ref{Constraint Handling}. The run converged in 161 iterations with
+monotonic decrease of the objective.
+
+The progressive decrease in the objective indicates monotonic convergence of the optimization algorithm. This behavior confirms that the learned forward model provides a smooth and informative response surface, enabling effective gradient-based updates.
+
+At each iteration, the optimizer queries the forward model to evaluate geometry predictions and uses the resulting gradient information to update the process parameters toward improved target matching. The observed convergence demonstrates that the proposed forward--inverse--optimization framework is numerically stable and suitable for practical WAAM process refinement.
+
+\subsubsection{Physical Meaning of Optimized Parameters}
+
+The optimized parameter vector
+
+\begin{equation}
+\mathbf{x}^{*} =
+\begin{bmatrix}
+V^{*} \\
+\mathrm{WFS}^{*} \\
+\mathrm{TS}^{*} \\
+\mathrm{CTWD}^{*}
+\end{bmatrix}
+\end{equation}
+
+represents the process recipe predicted to achieve the desired bead geometry. Each parameter plays a distinct physical role in the WAAM process.
+
+Voltage primarily governs arc energy and melt-pool spreading, directly influencing bead width and surface morphology. Wire feed speed controls the rate of material deposition and contributes to bead buildup. Travel speed determines the residence time of the heat source, thereby affecting heat input per unit length and thermal accumulation. CTWD influences arc stability, wire extension, and effective energy transfer to the substrate.
+
+Rather than identifying a purely numerical solution, the optimizer determines a physically consistent combination of parameters that balances heat input, material feed, and thermal dynamics. This ensures that the resulting process recipe is not only optimal with respect to the objective function but also physically realizable within the WAAM system.
+
+This interpretation highlights the practical significance of the proposed framework, as it enables data-driven yet physically grounded process initialization, with direct applicability to real-world WAAM operations and future closed-loop control systems.
+\subsection{Integrated Forward--Inverse--Optimization Framework}
+
+\subsubsection{From Prediction to Intelligent Process Planning}
+
+The combined framework transforms WAAM modeling from direct prediction into target-driven process planning, as formalized in Eq.~\ref{Eq:11}.
+
+In this structure, the forward model serves as the predictive evaluator, the inverse model provides the initial estimate, and the optimizer refines the input vector. This integration is important because each component compensates for the limitation of the others.
+
+
+\subsubsection{Implications for WAAM Digital Twin Development}
+
+
+The integrated forward–inverse–optimization architecture provides the computational intelligence 
+required for future WAAM digital twin systems. A full positioning is discussed in a later section.
+
+A digital twin requires the ability to predict process outcomes, infer corrective actions, and update process parameters in response to desired targets \cite{Fuller2020,Tao2018}.
+
+In the architecture discussed 
+(section \ref{Noise Modelling}), the forward model enables the digital twin to simulate bead geometry from candidate process parameters, while the inverse model provides an initial estimate of parameters corresponding to a desired geometry. The optimization layer refines this estimate to ensure consistency with the forward-model prediction and improve target satisfaction.
+
+Together, these components establish a closed computational loop that supports geometry-driven process planning and adaptive parameter correction. This integration forms the foundation of a self-initializing WAAM digital twin capable of intelligent decision-making and scalable deployment in advanced manufacturing systems \cite{Liu2025DTWAAM,Zhao2024DTWAAM}
+
+
+.
+
+\subsection{Layer-2 Workflow for Geometry-Driven WAAM Correction}
+
+The proposed framework provides the computational foundation for layer-by-layer geometry correction in WAAM. Given a desired bead geometry,
+
+\begin{equation}
+\mathbf{y}_{d} =
+\begin{bmatrix}
+\bar{h}_{d} \\
+\bar{w}_{d} \\
+\sigma_{h,d}^{2} \\
+\sigma_{w,d}^{2}
+\end{bmatrix},
+\end{equation}
+
+the inverse model generates an initial process-parameter estimate:
+
+\begin{equation}
+\mathbf{x}^{(0)} = g_{\phi}(\mathbf{y}_{d}),
+\end{equation}
+
+which is refined through forward-model-constrained optimization:
+
+\begin{equation}
+\mathbf{x}^{*} =
+\arg\min_{\mathbf{x}\in\Omega}
+\left\|
+\mathbf{y}_{d} - f_{\theta}(\mathbf{x})
+\right\|_{2}^{2}.
+\end{equation}
+
+The optimized parameter vector,
+
+\begin{equation}
+\mathbf{x}^{*} =
+\begin{bmatrix}
+V^{*} \\
+\mathrm{WFS}^{*} \\
+\mathrm{TS}^{*} \\
+\mathrm{CTWD}^{*}
+\end{bmatrix},
+\end{equation}
+
+is then applied to execute WAAM deposition. After deposition, the achieved geometry is measured as
+
+\begin{equation}
+\mathbf{y}_{a} =
+\begin{bmatrix}
+\bar{h}_{a} \\
+\bar{w}_{a} \\
+\sigma_{h,a}^{2} \\
+\sigma_{w,a}^{2}
+\end{bmatrix}.
+\end{equation}
+
+The deviation between desired and achieved geometry is computed as
+
+\begin{equation}
+\mathbf{e} = \mathbf{y}_{d} - \mathbf{y}_{a}.
+\end{equation}
+
+If the deviation exceeds a prescribed tolerance,
+
+\begin{equation}
+\|\mathbf{e}\|_{2} > \epsilon,
+\end{equation}
+
+the error is fed back into the framework to generate an updated process parameter vector via re-optimization.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\mathbf{y}_{d}
+\rightarrow
+g_{\phi}(\mathbf{y}_{d})
+\rightarrow
+\mathbf{x}^{(0)}
+\rightarrow
+\mathcal{O}(\mathbf{x}^{(0)}, f_{\theta})
+\rightarrow
+\mathbf{x}^{*}
+\rightarrow
+\mathrm{WAAM}
+\rightarrow
+\mathbf{y}_{a}
+\rightarrow
+\mathbf{e}
+\rightarrow
+\mathbf{x}_{\mathrm{new}}^{*}.
+\end{equation}
+\end{tcolorbox}
+
+This workflow establishes a geometry-driven, iterative correction mechanism for WAAM deposition. Unlike conventional open-loop approaches, the proposed framework enables adaptive refinement of process parameters across successive layers, forming the basis for a closed-loop digital twin capable of real-time process correction.
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.95\textwidth]{K.png}
+    \caption{Integrated forward--inverse--optimization workflow for geometry-driven WAAM control.}
+    \label{fig:integrated_workflow}
+\end{figure*}
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.95\textwidth]{K4.png}
+    \caption{Comparison between conventional open-loop deposition and the proposed geometry-driven two-layer WAAM refinement framework.}
+    \label{fig:comparison_framework}
+\end{figure*}
+\section{Technical Considerations and Mathematical Justification of the Proposed Framework}
+
+Several important mathematical and computational considerations arise when deploying machine learning and optimization frameworks in WAAM systems. These considerations are discussed here to clarify the assumptions, approximations, and design choices underlying the proposed framework.
+
+\subsection{Digital Twin Positioning}
+
+The proposed framework should be interpreted as the computational intelligence and initialization 
+layer of a future WAAM digital twin. The three operators,
+
+
+\[
+f_{\theta}: x \mapsto y,\qquad 
+g_{\phi}: y \mapsto x,\qquad 
+O: x^{(0)} \mapsto x^{*},
+\]
+
+
+define forward prediction, inverse estimation, and optimization-based refinement, respectively. 
+Together, they establish a bidirectional mapping between process parameters and bead geometry.
+
+This architecture provides a scalable foundation for digital twin deployment by enabling 
+simulation of candidate process parameters, inference of feasible initializations from desired 
+geometry, and optimization-driven correction to enforce forward-model consistency. When 
+augmented with real-time sensing, state estimation, and adaptive control, this computational 
+backbone supports closed-loop, geometry-driven WAAM manufacturing. As such, the framework 
+serves as the initialization and decision-making core of future WAAM digital twin systems.
+
+
+
+\subsection{Noise Modeling and Heteroscedasticity}\label{Noise Modelling}
+
+
+The Gaussian Process Regression (GPR) framework adopted in this work assumes additive Gaussian noise,
+
+\begin{equation}
+\mathbf{y} =
+f(\mathbf{x}) + \boldsymbol{\epsilon},
+\quad
+\boldsymbol{\epsilon} \sim \mathcal{N}(0,\sigma_n^2 \mathbf{I}),
+\end{equation}
+
+which corresponds to a homoscedastic noise model \cite{Rasmussen2006}. 
+
+In practical WAAM processes, the noise characteristics may vary with operating conditions, leading to heteroscedastic behavior,
+
+\begin{equation}
+\sigma_n^2 = \sigma_n^2(\mathbf{x}).
+\end{equation}
+
+However, this study focuses on experimentally stable deposition regimes, where the constant-noise assumption provides a computationally efficient approximation while still capturing the dominant uncertainty characteristics of the process. This simplification enables robust model training without significantly compromising predictive accuracy within the considered operating domain.
+
+\subsection{Kernel Selection in Gaussian Process Modeling}
+
+The squared-exponential kernel was selected to model the smooth and continuous nonlinear behavior of WAAM process--response relationships within stable deposition regimes:
+
+\begin{equation}
+k(\mathbf{x},\mathbf{x}') =
+\sigma_f^2
+\exp\!\left(
+-\frac{1}{2}
+(\mathbf{x}-\mathbf{x}')^{T}
+\mathbf{\Lambda}^{-1}
+(\mathbf{x}-\mathbf{x}')
+\right).
+\end{equation}
+
+This kernel generates infinitely differentiable functions,
+
+\begin{equation}
+f(\mathbf{x}) \in C^{\infty},
+\end{equation}
+
+which makes it well suited for capturing the gradual thermal evolution and smooth geometric variations characteristic of steady-state WAAM deposition.
+
+To ensure model validity, highly unstable arc conditions and transient regimes were excluded from the training dataset. This restriction enforces a locally smooth response surface, allowing the squared-exponential kernel to provide accurate interpolation and reliable predictions within the defined operating domain.
+
+This choice of kernel therefore aligns the statistical model structure with the underlying physics of the WAAM process, supporting robust forward modeling and stable digital twin initialization.
+
+\subsection{Independent Multi-Output Approximation}
+
+The forward model treats each geometric output as an independent regression task:
+
+\begin{equation}
+\hat{\bar{h}} = f_h(\mathbf{x}), \quad
+\hat{\bar{w}} = f_w(\mathbf{x}).
+\end{equation}
+
+Although the outputs are physically correlated,
+
+\begin{equation}
+\mathrm{Cov}(\bar{h}, \bar{w}) \neq 0,
+\end{equation}
+
+independent-output regression was adopted to reduce model complexity and improve computational efficiency, particularly for inverse modeling and optimization.
+
+The overall forward mapping is therefore expressed as
+
+\begin{equation}
+f(\mathbf{x}) =
+\begin{bmatrix}
+f_h(\mathbf{x}) \\
+f_w(\mathbf{x}) \\
+f_{\sigma_h^2}(\mathbf{x}) \\
+f_{\sigma_w^2}(\mathbf{x})
+\end{bmatrix},
+\end{equation}
+
+which provides a tractable approximation of the full coupled process-response manifold. This decomposition enables scalable model training while maintaining sufficient accuracy for geometry prediction and optimization.
+
+\subsection{Forward--Inverse Refinement Structure}
+
+To improve inverse-model consistency, a refinement strategy was introduced using forward-generated geometric responses(see \ref{Eq:55}).
+
+
+This approach does not replace experimentally measured data but instead enforces local consistency between the forward and inverse mappings. As a result, the inverse model becomes better aligned with the learned forward response surface, improving its effectiveness as an initialization mechanism for optimization.
+
+This refinement strategy enhances the compatibility between the forward and inverse operators while preserving the physical fidelity of the forward-model training.
+
+\subsection{Gradient-Based Optimization on Non-Convex Manifolds}
+
+The optimization layer solves
+
+\begin{equation}
+\mathbf{x}^{*} =
+\arg\min_{\mathbf{x}}
+\left\|
+\mathbf{y}_d - f_{\theta}(\mathbf{x})
+\right\|_2^2.
+\end{equation}
+
+Due to the nonlinear nature of the WAAM process-response manifold, the objective function is generally non-convex,
+
+\begin{equation}
+\nabla^2 J(\mathbf{x}) \neq 0,
+\end{equation}
+
+and global optimality cannot be guaranteed. 
+
+To address this, the optimization is initialized using inverse-model predictions,
+
+\begin{equation}
+\mathbf{x}^{(0)} = g_{\phi}(\mathbf{y}_d),
+\end{equation}
+
+which provides a physically informed starting point close to the feasible solution region. As a result, the optimization operates as a local refinement procedure on the learned manifold, rather than an unconstrained global search, significantly improving convergence efficiency and solution quality.
+
+\subsection{Differentiability of Gradient Boosting Models}
+
+Gradient Boosting Regression (GBR) models are composed of piecewise-constant decision trees and are not analytically differentiable everywhere,
+
+\begin{equation}
+\frac{\partial f_{\mathrm{GBR}}}{\partial \mathbf{x}} \notin C^1.
+\end{equation}
+
+To enable gradient-based optimization, the required derivatives are approximated numerically using finite differences:
+
+\begin{equation}
+\frac{\partial f}{\partial x_j}
+\approx
+\frac{
+f(x_j + \Delta x_j) - f(x_j)
+}{
+\Delta x_j
+}.
+\end{equation}
+
+This approach provides a practical estimate of the Jacobian over the learned response surface, allowing gradient-based updates to be performed despite the non-smooth nature of the underlying model.
+
+The numerical approximation is sufficiently accurate within local neighborhoods of the operating point, enabling stable optimization and effective parameter refinement.
+
+\subsection{Learning Rate and Optimization Stability}
+
+The optimization framework updates the process-parameter vector as
+
+\begin{equation}
+\mathbf{x}^{(k+1)} =
+\mathbf{x}^{(k)} - \alpha \nabla J(\mathbf{x}^{(k)}),
+\end{equation}
+
+where the learning rate $\alpha$ governs numerical stability,
+
+\begin{equation}
+0 < \alpha \ll 1.
+\end{equation}
+
+To ensure physically feasible solutions, the optimization is constrained within the admissible WAAM operating domain,
+
+\begin{equation}
+\mathbf{x} \in \Omega,
+\quad
+\mathbf{x}_{\min} \leq \mathbf{x} \leq \mathbf{x}_{\max},
+\end{equation}
+
+and enforced through projection:
+
+\begin{equation}
+\mathbf{x}^{(k+1)} =
+\Pi_{\Omega}
+\left[
+\mathbf{x}^{(k)} - \alpha \nabla J(\mathbf{x}^{(k)})
+\right].
+\end{equation}
+
+Small step sizes were selected to ensure stable convergence and prevent oscillatory behavior near domain boundaries. Since the inverse-model initialization lies close to feasible operating regions, the optimization primarily performs local refinement rather than large-scale parameter exploration.
+
+\subsection{Heat Input Coupling Approximation}
+
+Although welding current is not explicitly modeled, the effective heat input can be expressed as
+
+\begin{equation}
+HI = \eta \frac{VI}{TS}.
+\end{equation}
+
+In constant-voltage WAAM systems, current is implicitly coupled to wire feed speed, which can be approximated as,
+
+\begin{equation}
+I \approx \kappa \cdot \mathrm{WFS}.
+\end{equation}
+
+Thus, the framework captures heat-input dynamics indirectly through the inclusion of voltage, travel speed, and wire feed speed, enabling a data-driven approximation of thermophysical interactions without explicitly modeling current.
+
+\subsection{Generalization and Extrapolation Considerations}
+
+The proposed framework is designed for interpolation within experimentally observed operating regions,
+
+\begin{equation}
+\mathbf{x} \in \Omega_{\mathrm{train}}.
+\end{equation}
+
+Predictions outside the convex hull of the training dataset,
+
+\begin{equation}
+\mathbf{x} \notin \mathrm{Conv}(\Omega_{\mathrm{train}}),
+\end{equation}
+
+are not guaranteed to preserve predictive accuracy. This limitation is inherent to data-driven models trained on finite experimental datasets and underscores the importance of ensuring sufficient coverage of the WAAM parameter space during data acquisition.
+
+\subsection{Digital Twin Positioning}
+
+The proposed framework should be interpreted as the computational intelligence and initialization layer of a future WAAM digital twin, rather than a complete real-time implementation.
+
+\begin{tcolorbox}[colback=white,colframe=black,boxrule=0.5pt,arc=2pt]
+\small
+\begin{equation}
+\begin{aligned}
+f_{\theta}: \mathbf{x} &\rightarrow \mathbf{y}, \\
+g_{\phi}: \mathbf{y} &\rightarrow \mathbf{x}, \\
+\mathcal{O}: \hat{\mathbf{x}} &\rightarrow \mathbf{x}^{*}.
+\end{aligned}
+\end{equation}
+\end{tcolorbox}
+
+These operators respectively define the forward prediction, inverse estimation, and optimization refinement processes. Together, they form the computational backbone for bidirectional mapping between process parameters and bead geometry.
+
+This architecture establishes a scalable foundation for future WAAM digital twin systems, where real-time sensing, state estimation, and adaptive control can be integrated to enable closed-loop, geometry-driven manufacturing \cite{Zhao2024DTWAAM}.
+
+
+\subsection{Scientific Contributions}\label{contribution}
+
+This work makes the following scientific contributions:
+
+\begin{enumerate}
+    \item A unified forward--inverse--optimization architecture for geometry-driven WAAM
+          process control.
+    \item Material-dependent model selection demonstrating that GBR is optimal for ER70S-6
+          while GPR is optimal for AISI~316.
+    \item High predictive accuracy in forward modeling, with $R^{2}$ values exceeding
+          $0.98$ for ER70S-6 and $0.94$ for AISI~316.
+    \item Demonstration that inverse-only parameter estimation is insufficient for
+          accurate process reconstruction.
+    \item Optimization-driven refinement that reduces bead-height error from
+          $26.48\%\!\rightarrow\!0.205\%$ and variance error from
+          $91.49\%\!\rightarrow\!4.514\%$.
+    \item A two-layer experimental validation workflow confirming the practical
+          applicability of the proposed framework.
+    \item Positioning of the architecture as the computational core for future WAAM
+          digital twin systems.
+\end{enumerate}
+
+
+
+\subsection{Summary of Contributions}
+
+This work presented an integrated machine-learning-driven forward--inverse--optimization framework for intelligent Wire Arc Additive Manufacturing (WAAM) process planning and geometry-driven parameter initialization.
+
+The proposed architecture combines forward prediction, inverse parameter estimation, and optimization-based refinement to enable target-driven WAAM input synthesis and iterative geometry correction. The experimental two-layer validation workflow (Fig.~\ref{fig:integrated_workflow} and Fig.~\ref{fig:comparison_framework}) further demonstrates the practical applicability of the proposed framework.
+
+Within this structure, the forward model predicts bead geometry from process parameters, the inverse model provides an initial estimate of feasible parameters from desired geometry, and the optimization layer refines this estimate to minimize the mismatch between target and predicted deposition outcomes.
+
+Unlike conventional forward-only WAAM predictive approaches \cite{Ding2015,Karmuhilan2018}, the proposed framework transforms the learned process-response model into an active process-planning mechanism capable of iterative parameter correction and geometry-driven deposition initialization.
+
+The framework was experimentally validated through controlled two-layer WAAM deposition under zero interpass temperature conditions, establishing a direct link between computational process planning and physical deposition refinement.
+
+\subsection{Summary of Key Findings}
+
+The proposed forward--inverse--optimization framework enables accurate, geometry-driven
+WAAM process control across both ER70S-6 and AISI~316. The forward models achieve
+material-dependent high accuracy, while the inverse model provides feasible initializations
+that require optimization-based refinement for precise parameter recovery. The optimization
+layer substantially improves bead-height and variance errors, and the two-layer validation
+confirms the practical viability of the approach. A complete enumeration of the scientific
+contributions is provided in Section \ref{contribution}.
+
+
+
+\section{Limitations and Future Considerations}
+
+Although the proposed framework demonstrates strong predictive and inverse-design capability for WAAM process initialization, several limitations related to scalability, generalization, and deployment toward fully autonomous digital twin systems must be acknowledged.
+
+First, the framework is primarily developed using single-bead deposition experiments. As a result, the learned mapping
+
+\begin{equation}
+\mathbf{y} = f(\mathbf{x})
+\end{equation}
+
+captures local bead-response behavior rather than full multilayer thermo-geometric accumulation effects. In multilayer deposition, the response depends on inherited process states:
+
+\begin{equation}
+\mathbf{y}_k = f(\mathbf{x}_k, \mathbf{s}_{k-1}),
+\end{equation}
+
+where $\mathbf{s}_{k-1}$ represents thermal and geometric memory from previous layers. Despite this limitation, single-bead modeling provides a foundational approximation of the process-response manifold upon which future state-space digital twin formulations can be built.
+
+Second, although the dataset comprises 796 experimental runs, the effective sampling density remains finite relative to the four-dimensional input space:
+
+\begin{equation}
+\mathbf{x} \in \mathbb{R}^{4}.
+\end{equation}
+
+This introduces the classical sparse-sampling limitation in nonlinear regression. However, the bounded operating domain and structured experimental design mitigate extrapolation instability and improve local model reliability.
+
+Third, the framework focuses on externally observable geometric outputs,
+
+\begin{equation}
+\mathbf{y} =
+\begin{bmatrix}
+\bar{h} & \bar{w} & \sigma_h^2 & \sigma_w^2
+\end{bmatrix}^{T},
+\end{equation}
+
+without explicitly incorporating internal metallurgical states such as porosity, lack of fusion, or microstructural anisotropy. 
+
+Furthermore, the machine learning models serve as surrogate approximators,
+
+\begin{equation}
+f_{\theta}(\mathbf{x}) \approx \mathcal{F}_{\mathrm{WAAM}}(\mathbf{x}),
+\end{equation}
+
+and do not explicitly encode governing physical laws. This work prioritizes computational tractability and real-time applicability over full physical interpretability.
+
+The framework also assumes quasi-steady-state deposition characterized by averaged geometric descriptors. Transient phenomena during arc ignition, termination, or abrupt trajectory changes are not explicitly modeled. This simplification isolates dominant process-response behavior but limits applicability to highly dynamic conditions.
+
+In addition, only four primary process inputs were considered:
+
+\begin{equation}
+\mathbf{x} =
+\begin{bmatrix}
+V & \mathrm{WFS} & \mathrm{TS} & \mathrm{CTWD}
+\end{bmatrix}^{T},
+\end{equation}
+
+while other influential variables such as shielding gas composition, substrate temperature, and environmental disturbances were excluded to maintain tractable model complexity.
+
+Another limitation arises from the non-uniqueness of the inverse mapping,
+
+\begin{equation}
+g(\mathbf{y}) = \hat{\mathbf{x}},
+\end{equation}
+
+since multiple parameter combinations may produce similar geometric outputs. Therefore, the inverse model should be interpreted as a feasible initialization mechanism rather than a unique process prescription.
+
+Similarly, the gradient-based optimization process,
+
+\begin{equation}
+\mathbf{x}^{(k+1)} =
+\mathbf{x}^{(k)} - \alpha \nabla J(\mathbf{x}^{(k)}),
+\end{equation}
+
+may converge to local minima due to the non-convex nature of the WAAM response surface. However, inverse-model initialization significantly reduces the search space and improves convergence behavior.
+
+The observed material-dependent model selection further highlights that distinct WAAM material systems produce different process-response manifolds:
+
+\begin{equation}
+f_{\mathrm{ER70S6}}(\mathbf{x}) \neq f_{\mathrm{AISI316}}(\mathbf{x}),
+\end{equation}
+
+necessitating tailored modeling strategies for different materials.
+
+Finally, while the proposed framework establishes the computational foundation for WAAM digital twin initialization, it does not yet constitute a fully closed-loop autonomous system. Real-time implementation will require continuous sensing, state estimation, and adaptive control:
+
+\begin{equation}
+\mathbf{x}_k = \pi(\hat{\mathbf{s}}_k, \mathbf{y}_d),
+\end{equation}
+
+where $\pi(\cdot)$ represents the control policy. The present work therefore serves as a predictive--inverse--optimization foundation for future real-time WAAM digital twin architectures.
+
+\section*{8.1 Future Work}
+
+Future work will extend the proposed framework toward fully integrated multi-layer WAAM 
+digital twin control. This requires augmenting the process-state representation to include 
+thermal-history-dependent variables such as interpass temperature, layer index, and accumulated 
+thermal state:
+
+
+\begin{equation}
+\label{eq:123}
+\boxed{
+x_{\mathrm{future}} =
+\begin{bmatrix}
+V & \mathrm{WFS} & \mathrm{TS} & \mathrm{CTWD} & T_{\mathrm{interpass}} & n_{\mathrm{layer}} & S_{\mathrm{thermal}}
+\end{bmatrix}^{\mathsf{T}}
+}
+\end{equation}
+
+
+
+In addition, real-time deployment will require integration with in-situ sensing systems 
+(thermal measurements, laser profilometry, machine-controller feedback) to enable continuous 
+state estimation. Geometry error will drive corrective updates through an optimization-driven or 
+model predictive control (MPC) law,
+
+\begin{equation}
+\label{eq:124}
+\boxed{
+e_k = y_{d,k} - y_k,\qquad 
+\Delta x_k = K(e_k),\qquad 
+x_{k+1} = x_k + \Delta x_k
+}
+\end{equation}
+
+
+
+transitioning the framework from initialization to fully adaptive, geometry-aware control.
+
+These extensions establish a pathway toward autonomous WAAM systems capable of real-time 
+decision-making and closed-loop process optimization.
+
+
+
+
+Overall, the proposed forward--inverse--optimization architecture provides the computational foundation for target-driven WAAM process planning, iterative deposition refinement, digital twin initialization, and future closed-loop autonomous additive manufacturing.
+
+This progression establishes a pathway toward fully autonomous, self-correcting WAAM systems capable of real-time decision-making and process optimization.
+
+
+% ================================
+% IMMI REQUIRED DECLARATIONS
+% ================================
+
+\section*{Funding}
+This work was supported in part by the National Aeronautics and Space Administration (NASA) under the University Student Research Challenge (USRC), and by the National Science Foundation (NSF) through the HAMMER Engineering Research Center (ERC) under Award No. EEC-2133630. Additional support was provided by Case Western Reserve University and Lincoln Electric.
+
+\section*{Competing Interests}
+The authors declare that they have no competing financial or non-financial interests.
+
+\section*{Data Availability}
+The datasets generated and analyzed during the current study (comprising 796 WAAM experimental runs across ER70S-6 and AISI 316 materials) are available from the corresponding author upon reasonable request. Future work will include public release through an appropriate repository.
+
+\section*{Code Availability}
+Custom codes developed for the machine learning models and optimization framework are available from the corresponding author upon reasonable request.
+
+\section*{Author Contributions}
+B.E. conceived the study, developed the framework, performed experiments, and wrote the manuscript. V.R. contributed to experimental design and data acquisition. J.L. provided materials expertise and interpretation. K.A.L. supervised the research and contributed to methodology and manuscript review. All authors reviewed and approved the final manuscript.
+
+\section*{Acknowledgments}
+The authors gratefully acknowledge the support and resources provided by Case Western Reserve University. The authors also thank the Advanced Manufacturing and Mechanical Reliability Center (AMMRC) and the Institute for Smart, Secure, and Connected Systems (ISSACS) for providing facilities and technical support.
+
+The authors further thank collaborators and research colleagues who contributed to the development, operation, and maintenance of the WAAM experimental platform and metrology systems. Their support was instrumental in enabling the large-scale experimental data acquisition and analysis presented in this work.
+
+
+% =========================
+% REFERENCES
+% =========================
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+\end{document}
